@@ -20,10 +20,11 @@ interface HeroQuotesProps {
 
 export default function HeroQuotes({ quotes, refreshInterval = 30000 }: HeroQuotesProps) {
   const allQuotes = quotes && quotes.length > 0 ? quotes : FALLBACK_QUOTES;
-  const [currentIndex, setCurrentIndex] = useState(() =>
-    Math.floor(Math.random() * allQuotes.length)
-  );
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [fading, setFading] = useState(false);
+
+  // Randomize starting quote client-side only to avoid hydration mismatch
+  useEffect(() => { setCurrentIndex(Math.floor(Math.random() * allQuotes.length)); }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {

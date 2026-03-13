@@ -19,7 +19,8 @@ export default function ProgressPage() {
   const router = useRouter();
   const [entries, setEntries] = useState<EntryBrief[]>([]);
   const [moodHistory, setMoodHistory] = useState<any[]>([]);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
+  useEffect(() => { if (!currentMonth) setCurrentMonth(new Date()); }, []);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [dayEntries, setDayEntries] = useState<EntryBrief[]>([]);
 
@@ -68,10 +69,12 @@ export default function ProgressPage() {
 
   // Stats
   const totalEntries = entries.filter((e) => !e.is_draft).length;
-  const thisMonthEntries = entries.filter((e) => {
+  const thisMonthEntries = currentMonth ? entries.filter((e) => {
     const d = new Date(e.created_at);
     return d.getMonth() === currentMonth.getMonth() && d.getFullYear() === currentMonth.getFullYear() && !e.is_draft;
-  }).length;
+  }).length : 0;
+
+  if (!currentMonth) return null;
 
   return (
     <div className="max-w-3xl mx-auto p-8">
@@ -110,7 +113,7 @@ export default function ProgressPage() {
       {/* Month navigation */}
       <div className="flex items-center justify-between mb-4">
         <button
-          onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+          onClick={() => currentMonth && setCurrentMonth(subMonths(currentMonth, 1))}
           className="p-2 rounded-lg"
           style={{ color: "var(--text-muted)" }}
         >
@@ -120,7 +123,7 @@ export default function ProgressPage() {
           {format(currentMonth, "MMMM yyyy")}
         </span>
         <button
-          onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+          onClick={() => currentMonth && setCurrentMonth(addMonths(currentMonth, 1))}
           className="p-2 rounded-lg"
           style={{ color: "var(--text-muted)" }}
         >

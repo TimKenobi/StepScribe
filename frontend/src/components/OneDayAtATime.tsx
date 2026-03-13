@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday } from "date-fns";
 
 interface OneDayAtATimeProps {
@@ -19,15 +19,21 @@ interface OneDayAtATimeProps {
  */
 export default function OneDayAtATime({
   journaledDates,
-  currentMonth = new Date(),
+  currentMonth,
   onDayClick,
   selectedDate,
 }: OneDayAtATimeProps) {
+  const [today, setToday] = useState<Date | null>(null);
+  useEffect(() => { setToday(new Date()); }, []);
+
+  const month = currentMonth ?? today;
+
   const days = useMemo(() => {
-    const start = startOfMonth(currentMonth);
-    const end = endOfMonth(currentMonth);
+    if (!month) return [];
+    const start = startOfMonth(month);
+    const end = endOfMonth(month);
     return eachDayOfInterval({ start, end });
-  }, [currentMonth]);
+  }, [month]);
 
   const journaledSet = useMemo(
     () => new Set(journaledDates.map((d) => format(new Date(d), "yyyy-MM-dd"))),
@@ -36,12 +42,14 @@ export default function OneDayAtATime({
 
   const totalDays = journaledSet.size;
 
+  if (!month || !today) return null;
+
   return (
     <div>
       {/* Today's focus */}
       <div className="mb-6 p-5 rounded-lg border" style={{ borderColor: "var(--accent-muted)", backgroundColor: "var(--bg-secondary)" }}>
         <p className="text-lg font-medium" style={{ color: "var(--text-primary)" }}>
-          Today is {format(new Date(), "EEEE, MMMM d")}
+          Today is {format(today, "EEEE, MMMM d")}
         </p>
         <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
           Just today. That&apos;s all you need to think about.
@@ -51,7 +59,7 @@ export default function OneDayAtATime({
       {/* Month header */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-          {format(currentMonth, "MMMM yyyy")}
+          {format(month, "MMMM yyyy")}
         </h3>
         <p className="text-xs" style={{ color: "var(--text-muted)" }}>
           {totalDays} {totalDays === 1 ? "day" : "days"} you showed up
