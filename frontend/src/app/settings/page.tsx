@@ -5,11 +5,15 @@ import { settingsApi, onboardingApi } from "@/lib/api";
 import { Check, Loader2, CheckCircle, XCircle, Trash2, RotateCcw } from "lucide-react";
 
 const PROVIDERS = [
-  { key: "grok", label: "Grok (xAI)", url: "https://console.x.ai/", modelDefault: "grok-3" },
-  { key: "openai", label: "OpenAI (GPT-4)", url: "https://platform.openai.com/api-keys", modelDefault: "gpt-4o" },
-  { key: "anthropic", label: "Anthropic (Claude)", url: "https://console.anthropic.com/", modelDefault: "claude-sonnet-4-20250514" },
-  { key: "ollama", label: "Ollama (Local)", url: "https://ollama.ai", modelDefault: "llama3" },
-  { key: "custom", label: "Custom Endpoint", url: "", modelDefault: "" },
+  { key: "grok", label: "Grok (xAI)", url: "https://console.x.ai/", modelDefault: "grok-3",
+    models: ["grok-4-1-fast-reasoning", "grok-3", "grok-3-mini", "grok-3-fast", "grok-2", "grok-2-mini"] },
+  { key: "openai", label: "OpenAI (GPT-4)", url: "https://platform.openai.com/api-keys", modelDefault: "gpt-4o",
+    models: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4-turbo", "gpt-4", "o3", "o3-mini", "o4-mini"] },
+  { key: "anthropic", label: "Anthropic (Claude)", url: "https://console.anthropic.com/", modelDefault: "claude-sonnet-4-20250514",
+    models: ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-3-7-sonnet-20250219", "claude-3-5-haiku-20241022"] },
+  { key: "ollama", label: "Ollama (Local)", url: "https://ollama.ai", modelDefault: "llama3",
+    models: ["llama3", "llama3.3", "llama3.1", "llama3.2", "mistral", "mixtral", "gemma2", "gemma3", "qwen2.5", "phi3", "deepseek-r1", "command-r"] },
+  { key: "custom", label: "Custom Endpoint", url: "", modelDefault: "", models: [] },
 ];
 
 export default function SettingsPage() {
@@ -44,10 +48,10 @@ export default function SettingsPage() {
       if (c.custom_ai_model) setCustomModel(c.custom_ai_model);
       // Collect masked keys for display
       const masks: Record<string, string> = {};
-      if (c.openai_api_key) masks.openai = c.openai_api_key;
-      if (c.anthropic_api_key) masks.anthropic = c.anthropic_api_key;
-      if (c.grok_api_key) masks.grok = c.grok_api_key;
-      if (c.custom_ai_api_key) masks.custom = c.custom_ai_api_key;
+      if (c.openai_api_key_masked) masks.openai = c.openai_api_key_masked;
+      if (c.anthropic_api_key_masked) masks.anthropic = c.anthropic_api_key_masked;
+      if (c.grok_api_key_masked) masks.grok = c.grok_api_key_masked;
+      if (c.custom_ai_api_key_masked) masks.custom = c.custom_ai_api_key_masked;
       setMaskedKeys(masks);
     } catch {}
   };
@@ -216,10 +220,13 @@ export default function SettingsPage() {
               </div>
               <div>
                 <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Model</label>
-                <input value={aiModel} onChange={(e) => setAiModel(e.target.value)}
-                  placeholder="llama3"
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
-                  style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
+                <select value={aiModel} onChange={(e) => setAiModel(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono appearance-none cursor-pointer"
+                  style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
+                  {(selectedProvider?.models || []).map((m: string) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
               </div>
             </div>
           )}
@@ -254,11 +261,14 @@ export default function SettingsPage() {
           {/* Model field for key-based providers */}
           {needsKey && (
             <div className="mb-3">
-              <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Model (optional)</label>
-              <input value={aiModel} onChange={(e) => setAiModel(e.target.value)}
-                placeholder={selectedProvider?.modelDefault || "default"}
-                className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
-                style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
+              <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Model</label>
+              <select value={aiModel} onChange={(e) => setAiModel(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono appearance-none cursor-pointer"
+                style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
+                {(selectedProvider?.models || []).map((m: string) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
             </div>
           )}
 

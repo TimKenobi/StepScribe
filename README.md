@@ -247,6 +247,15 @@ See [.env.example](.env.example) for all available settings. Key options:
 
 ---
 
+## Roadmap
+
+- [ ] **Multi-user support** — Individual user accounts with authentication for the web server version. Currently single-user (all data under "default" user).
+- [ ] **Group/sponsor sharing** — Share journal entries or progress with a sponsor or accountability group
+- [ ] **Mobile-responsive PWA** — Installable progressive web app for phone use
+- [ ] **Backup/restore** — One-click database backup and restore from the UI
+
+---
+
 ## License
 
 Private project. All rights reserved.

@@ -117,6 +117,14 @@ async def complete_onboarding(data: OnboardingData, db: AsyncSession = Depends(g
             )
             db.add(hero)
 
+    # Clear old onboarding memories before creating new ones (avoid duplicates)
+    old_mem_stmt = select(AIMemory).where(
+        AIMemory.user_id == data.user_id, AIMemory.source == "onboarding"
+    )
+    old_mem_result = await db.execute(old_mem_stmt)
+    for old_mem in old_mem_result.scalars().all():
+        await db.delete(old_mem)
+
     # Create AI memory from about_me if provided
     if data.about_me and data.about_me.strip():
         memory = AIMemory(

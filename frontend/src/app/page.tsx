@@ -250,10 +250,10 @@ export default function JournalPage() {
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>Include:</span>
               {[{ key: "mood", label: "Inner Weather" }, { key: "conversation", label: "AI Chat" }, { key: "heroes", label: "Hero Quotes" }].map(({ key, label }) => (
                 <button key={key} onClick={() => toggleSection(key)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-colors"
-                  style={{ backgroundColor: sections[key] ? "var(--accent-muted)" : "var(--bg-tertiary)",
-                    color: sections[key] ? "var(--accent)" : "var(--text-muted)",
-                    border: `1px solid ${sections[key] ? "var(--accent)" : "var(--border)"}` }}>
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                  style={{ backgroundColor: sections[key] ? "var(--accent)" : "var(--bg-tertiary)",
+                    color: sections[key] ? "#fff" : "var(--text-secondary)",
+                    border: `1px solid ${sections[key] ? "var(--accent)" : "var(--border-light)"}` }}>
                   {sections[key] ? <Eye size={12} /> : <EyeOff size={12} />}{label}
                 </button>
               ))}

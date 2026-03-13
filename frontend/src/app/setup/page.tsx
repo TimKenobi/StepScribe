@@ -5,13 +5,18 @@ import { useRouter } from "next/navigation";
 import { faithApi, heroesApi, onboardingApi, settingsApi } from "@/lib/api";
 import type { FaithTradition } from "@/lib/types";
 import { Check, ChevronRight, ChevronLeft, Flame, User, Cpu, Loader2, CheckCircle, XCircle } from "lucide-react";
+import confetti from "canvas-confetti";
 
 const PROVIDERS = [
-  { key: "grok", label: "Grok (xAI)", desc: "Fast, witty, excellent reasoning. Recommended.", url: "https://console.x.ai/", modelDefault: "grok-3" },
-  { key: "openai", label: "OpenAI (GPT-4)", desc: "Industry standard. Reliable and versatile.", url: "https://platform.openai.com/api-keys", modelDefault: "gpt-4o" },
-  { key: "anthropic", label: "Anthropic (Claude)", desc: "Deep, thoughtful, careful reasoning.", url: "https://console.anthropic.com/", modelDefault: "claude-sonnet-4-20250514" },
-  { key: "ollama", label: "Ollama (Local)", desc: "Run models on your machine. 100% private — nothing leaves your computer.", url: "https://ollama.ai", modelDefault: "llama3" },
-  { key: "custom", label: "Custom Endpoint", desc: "Any OpenAI-compatible API (LM Studio, vLLM, etc).", url: "", modelDefault: "" },
+  { key: "grok", label: "Grok (xAI)", desc: "Fast, witty, excellent reasoning. Recommended.", url: "https://console.x.ai/", modelDefault: "grok-3",
+    models: ["grok-4-1-fast-reasoning", "grok-3", "grok-3-mini", "grok-3-fast", "grok-2", "grok-2-mini"] },
+  { key: "openai", label: "OpenAI (GPT-4)", desc: "Industry standard. Reliable and versatile.", url: "https://platform.openai.com/api-keys", modelDefault: "gpt-4o",
+    models: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4-turbo", "gpt-4", "o3", "o3-mini", "o4-mini"] },
+  { key: "anthropic", label: "Anthropic (Claude)", desc: "Deep, thoughtful, careful reasoning.", url: "https://console.anthropic.com/", modelDefault: "claude-sonnet-4-20250514",
+    models: ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-3-7-sonnet-20250219", "claude-3-5-haiku-20241022"] },
+  { key: "ollama", label: "Ollama (Local)", desc: "Run models on your machine. 100% private — nothing leaves your computer.", url: "https://ollama.ai", modelDefault: "llama3",
+    models: ["llama3", "llama3.3", "llama3.1", "llama3.2", "mistral", "mixtral", "gemma2", "gemma3", "qwen2.5", "phi3", "deepseek-r1", "command-r"] },
+  { key: "custom", label: "Custom Endpoint", desc: "Any OpenAI-compatible API (LM Studio, vLLM, etc).", url: "", modelDefault: "", models: [] },
 ];
 
 export default function SetupPage() {
@@ -45,6 +50,38 @@ export default function SetupPage() {
     loadDefaultHeroes();
     loadAIConfig();
   }, []);
+
+  // Success celebration when reaching done step
+  useEffect(() => {
+    if (step === 5) {
+      const duration = 2500;
+      const end = Date.now() + duration;
+      const colors = ['#22c55e', '#eab308', '#a855f7', '#3b82f6', 'var(--accent)'];
+
+      const frame = () => {
+        confetti({
+          particleCount: 7,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0.2 },
+          colors,
+        });
+        confetti({
+          particleCount: 7,
+          angle: 120,
+          spread: 55,
+          origin: { x: 0.8 },
+          colors,
+        });
+
+        if (Date.now() < end) {
+          requestAnimationFrame(frame);
+        }
+      };
+
+      frame();
+    }
+  }, [step]);
 
   const loadAIConfig = async () => {
     try {
@@ -304,13 +341,16 @@ export default function SetupPage() {
                 </div>
                 <div>
                   <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Model</label>
-                  <input
+                  <select
                     value={aiModel}
                     onChange={(e) => setAiModel(e.target.value)}
-                    placeholder="llama3"
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono appearance-none cursor-pointer"
                     style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-                  />
+                  >
+                    {(selectedProvider?.models || []).map((m: string) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             )}
@@ -355,14 +395,17 @@ export default function SetupPage() {
             {/* Model field for key-based providers */}
             {needsKey && (
               <div className="mb-4">
-                <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Model (optional)</label>
-                <input
+                <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Model</label>
+                <select
                   value={aiModel}
                   onChange={(e) => setAiModel(e.target.value)}
-                  placeholder={selectedProvider?.modelDefault || "default"}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono appearance-none cursor-pointer"
                   style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-                />
+                >
+                  {(selectedProvider?.models || []).map((m: string) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -597,30 +640,53 @@ export default function SetupPage() {
         {/* ═══ Step 5: Done ═══ */}
         {step === 5 && (
           <div className="text-center">
-            <div className="mb-6 flex justify-center">
-              <Flame size={48} style={{ color: "var(--accent)" }} />
+            <div className="mb-8 flex justify-center">
+              <div className="relative">
+                <CheckCircle size={72} style={{ color: "var(--success, #22c55e)" }} />
+                <div className="absolute -top-1 -right-1">
+                  <Flame size={28} style={{ color: "var(--accent)" }} />
+                </div>
+              </div>
             </div>
-            <h2 className="text-xl font-semibold mb-3" style={{ color: "var(--text-primary)" }}>
-              You&apos;re all set.
+            
+            <h2 className="text-3xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
+              Setup Complete! 🎉
             </h2>
-            <p className="text-sm mb-2" style={{ color: "var(--text-secondary)" }}>
-              Your companion knows your tradition, your heroes, and a bit about you.
+            <p className="text-lg mb-6" style={{ color: "var(--text-secondary)" }}>
+              Your AI companion is now personalized and ready to walk with you.
             </p>
-            <p className="text-xs mb-6" style={{ color: "var(--text-muted)" }}>
-              You can change any of this anytime in Settings, Heroes, Faith &amp; Tradition, or AI Memory.
+
+            {/* Summary cards */}
+            <div className="grid grid-cols-3 gap-3 mb-8 text-center">
+              <div className="bg-[var(--bg-secondary)] p-3 rounded-xl border" style={{ borderColor: "var(--border)" }}>
+                <div className="text-2xl font-semibold" style={{ color: "var(--accent)" }}>{selectedFaith ? "✓" : "○"}</div>
+                <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Faith</div>
+              </div>
+              <div className="bg-[var(--bg-secondary)] p-3 rounded-xl border" style={{ borderColor: "var(--border)" }}>
+                <div className="text-2xl font-semibold" style={{ color: "var(--accent)" }}>{heroes.filter(h => h.selected).length}</div>
+                <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Heroes</div>
+              </div>
+              <div className="bg-[var(--bg-secondary)] p-3 rounded-xl border" style={{ borderColor: "var(--border)" }}>
+                <div className="text-2xl font-semibold" style={{ color: "var(--accent)" }}>{aboutMe.trim() ? "✓" : "○"}</div>
+                <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>About You</div>
+              </div>
+            </div>
+
+            <p className="text-xs mb-8 max-w-xs mx-auto" style={{ color: "var(--text-muted)" }}>
+              Everything is saved securely. You can update your preferences, heroes, or AI settings anytime from the menu.
             </p>
 
             {suggestedFigures.length > 0 && (
-              <div className="mb-6 p-4 rounded-lg border text-left" style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}>
-                <p className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
-                  Suggested figures from your tradition:
+              <div className="mb-8 p-5 rounded-2xl border text-left" style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}>
+                <p className="text-xs font-medium mb-3 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
+                  <Flame size={14} /> Suggested figures from your tradition:
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {suggestedFigures.map((name) => (
                     <button
                       key={name}
                       onClick={() => addSuggestedFigure(name)}
-                      className="px-3 py-1 rounded text-xs"
+                      className="px-4 py-1.5 rounded-full text-xs font-medium transition-all hover:scale-105"
                       style={{ backgroundColor: "var(--bg-tertiary)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
                     >
                       + {name}
@@ -632,11 +698,19 @@ export default function SetupPage() {
 
             <button
               onClick={() => router.push("/")}
-              className="px-8 py-3 rounded-lg text-sm font-medium"
-              style={{ backgroundColor: "var(--accent)", color: "#fff" }}
+              className="px-10 py-4 rounded-2xl text-base font-semibold inline-flex items-center gap-3 shadow-lg hover:shadow-xl transition-all active:scale-[0.985]"
+              style={{ 
+                backgroundColor: "var(--accent)", 
+                color: "#fff",
+                boxShadow: "0 10px 15px -3px rgb(234 179 8 / 0.2)"
+              }}
             >
-              Start Journaling
+              Begin Your Journey <Flame size={20} />
             </button>
+            
+            <p className="text-[10px] mt-6" style={{ color: "var(--text-muted)" }}>
+              Your data is stored locally and privately.
+            </p>
           </div>
         )}
       </div>
