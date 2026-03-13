@@ -124,6 +124,35 @@ export const memoryApi = {
   toggle: (id: string) => request<any>(`/api/memory/${id}/toggle`, { method: "PATCH" }),
 };
 
+// Uploads
+export const uploadsApi = {
+  upload: async (file: File, userId = "default", entryId?: string, caption?: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("user_id", userId);
+    if (entryId) form.append("entry_id", entryId);
+    if (caption) form.append("caption", caption);
+    const res = await fetch(`${API_BASE}/api/uploads/`, {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Upload error ${res.status}: ${error}`);
+    }
+    return res.json();
+  },
+  list: (userId = "default", entryId?: string) => {
+    let url = `/api/uploads/?user_id=${userId}`;
+    if (entryId) url += `&entry_id=${entryId}`;
+    return request<any[]>(url);
+  },
+  update: (id: string, data: { entry_id?: string; caption?: string }) =>
+    request<any>(`/api/uploads/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  delete: (id: string) => request<any>(`/api/uploads/${id}`, { method: "DELETE" }),
+  fileUrl: (filename: string) => `${API_BASE}/api/uploads/file/${filename}`,
+};
+
 // Conversations
 export const conversationApi = {
   list: (userId = "default", entryId?: string) => {

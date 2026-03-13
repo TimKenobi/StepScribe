@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus, Save, Trash2, BookOpen, MessageCircle, X,
-  ChevronDown, ChevronUp, Send, Sparkles, Eye, EyeOff,
+  ChevronDown, ChevronUp, Send, Sparkles, Eye, EyeOff, Paperclip, Image,
 } from "lucide-react";
 import Editor from "@/components/Editor";
 import MoodWeather from "@/components/MoodWeather";
 import VoiceInput from "@/components/VoiceInput";
 import HeroQuotes from "@/components/HeroQuotes";
-import { journalApi, moodApi, conversationApi } from "@/lib/api";
+import { journalApi, moodApi, conversationApi, uploadsApi } from "@/lib/api";
 import { saveOfflineEntry } from "@/lib/storage";
 import { isOnline as checkOnline } from "@/lib/storage";
 
@@ -28,6 +28,16 @@ interface ChatMsg {
   role: "user" | "assistant";
   content: string;
   timestamp?: string;
+}
+
+interface AttachmentItem {
+  id: string;
+  filename: string;
+  original_name: string;
+  content_type: string;
+  size_bytes: number;
+  caption: string;
+  url: string;
 }
 
 export default function JournalPage() {
@@ -57,6 +67,10 @@ export default function JournalPage() {
   // Mood section expanded
   const [showMood, setShowMood] = useState(false);
 
+  // Attachments
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [uploading, setUploading] = useState(false);
+
   useEffect(() => {
     loadEntries();
     checkOnline().then(setOnline);
@@ -72,12 +86,14 @@ export default function JournalPage() {
     setSelectedMood(""); setEnergy(5);
     setChatMessages([]); setConversationId(null); setShowChat(false);
     setSections({ mood: true, conversation: true, heroes: true });
+    setAttachments([]);
   };
 
   const selectEntry = async (entry: Entry) => {
     setActiveEntry(entry); setTitle(entry.title);
     setHtml(entry.content_html || entry.content);
     if (entry.sections_included) setSections(entry.sections_included);
+    // Load conversations
     try {
       const convos = await conversationApi.list("default", entry.id);
       if (convos.length > 0) {
@@ -88,6 +104,11 @@ export default function JournalPage() {
         setChatMessages([]); setConversationId(null); setShowChat(false);
       }
     } catch { setChatMessages([]); setConversationId(null); }
+    // Load attachments
+    try {
+      const atts = await uploadsApi.list("default", entry.id);
+      setAttachments(atts);
+    } catch { setAttachments([]); }
   };
 
   const saveEntry = useCallback(async (publish = false) => {
@@ -145,6 +166,32 @@ export default function JournalPage() {
   };
 
   const insertToEditor = (text: string) => setHtml((prev) => prev + `<blockquote><p>${text}</p></blockquote>`);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    for (const file of Array.from(files)) {
+      try {
+        const result = await uploadsApi.upload(file, "default", activeEntry?.id);
+        setAttachments((prev) => [...prev, result]);
+        // If it's an image, insert into editor
+        if (file.type.startsWith("image/")) {
+          const imgUrl = uploadsApi.fileUrl(result.filename);
+          setHtml((prev) => prev + `<p><img src="${imgUrl}" alt="${result.original_name}" style="max-width:100%;border-radius:8px;margin:8px 0" /></p>`);
+        }
+      } catch {}
+    }
+    setUploading(false);
+    e.target.value = "";
+  };
+
+  const removeAttachment = async (id: string) => {
+    try {
+      await uploadsApi.delete(id);
+      setAttachments((prev) => prev.filter((a) => a.id !== id));
+    } catch {}
+  };
 
   const toggleSection = (key: string) => setSections((prev) => ({ ...prev, [key]: !prev[key] }));
 
@@ -214,10 +261,41 @@ export default function JournalPage() {
               </div>
             )}
 
+            {/* Attachment gallery */}
+            {attachments.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {attachments.map((att) => (
+                  <div key={att.id} className="relative group rounded-lg overflow-hidden border"
+                    style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-tertiary)" }}>
+                    {att.content_type.startsWith("image/") ? (
+                      <img src={uploadsApi.fileUrl(att.filename)} alt={att.original_name}
+                        className="w-20 h-20 object-cover" />
+                    ) : (
+                      <div className="w-20 h-20 flex items-center justify-center">
+                        <Paperclip size={20} style={{ color: "var(--text-muted)" }} />
+                        <span className="text-[8px] absolute bottom-1 inset-x-0 text-center truncate px-1"
+                          style={{ color: "var(--text-muted)" }}>{att.original_name}</span>
+                      </div>
+                    )}
+                    <button onClick={() => removeAttachment(att.id)}
+                      className="absolute top-0.5 right-0.5 bg-black/50 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <X size={10} className="text-white" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Actions bar */}
             <div className="mt-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <VoiceInput onTranscript={handleVoiceResult} />
+                <label className="cursor-pointer p-2 rounded-lg transition-colors"
+                  style={{ backgroundColor: "var(--bg-tertiary)", color: "var(--text-secondary)" }}
+                  title="Attach photo or file">
+                  <input type="file" className="hidden" accept="image/*,.pdf,.txt,.md" multiple onChange={handleFileUpload} />
+                  {uploading ? <span className="text-xs animate-pulse">...</span> : <Image size={16} />}
+                </label>
                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>{wordCount} words</span>
               </div>
               <div className="flex items-center gap-2">

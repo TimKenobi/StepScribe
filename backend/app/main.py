@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import journal, ai, mood, heroes, export, groups, sync, faith, onboarding, memory, conversations
+from app.routers import journal, ai, mood, heroes, export, groups, sync, faith, onboarding, memory, conversations, uploads
 
 
 @asynccontextmanager
@@ -47,6 +47,7 @@ app.include_router(conversations.router, prefix="/api/conversations", tags=["con
 app.include_router(export.router, prefix="/api/export", tags=["export"])
 app.include_router(groups.router, prefix="/api/groups", tags=["groups"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
+app.include_router(uploads.router, prefix="/api/uploads", tags=["uploads"])
 
 
 @app.get("/health")

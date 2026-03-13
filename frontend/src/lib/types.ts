@@ -105,6 +105,19 @@ export interface AIMemory {
   updated_at: string;
 }
 
+export interface Attachment {
+  id: string;
+  user_id: string;
+  entry_id: string | null;
+  filename: string;
+  original_name: string;
+  content_type: string;
+  size_bytes: number;
+  caption: string;
+  url: string;
+  created_at: string;
+}
+
 export interface ConversationMessage {
   role: "user" | "assistant";
   content: string;

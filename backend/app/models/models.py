@@ -220,6 +220,23 @@ class SharedEntry(Base):
 
 
 # ──────────────────────────────────────────────
+# File Attachments — photos, documents, etc.
+# ──────────────────────────────────────────────
+class Attachment(Base):
+    __tablename__ = "attachments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    entry_id: Mapped[str] = mapped_column(ForeignKey("journal_entries.id"), nullable=True)
+    filename: Mapped[str] = mapped_column(String(500))
+    original_name: Mapped[str] = mapped_column(String(500))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    caption: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+# ──────────────────────────────────────────────
 # AI Memory — persistent knowledge the AI learns about you
 # ──────────────────────────────────────────────
 class AIMemory(Base):
