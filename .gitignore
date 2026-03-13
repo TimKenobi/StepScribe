@@ -1,0 +1,28 @@
+# Environment
+.env
+.env.local
+
+# Data persistence (local volume mounts)
+data/db/
+data/exports/
+data/uploads/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Node
+node_modules/
+.next/
+out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

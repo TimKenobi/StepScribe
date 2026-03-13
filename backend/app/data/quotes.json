@@ -1,0 +1,50 @@
+{
+  "stoic": [
+    {"author": "Marcus Aurelius", "text": "You have power over your mind — not outside events. Realize this, and you will find strength.", "source": "Meditations"},
+    {"author": "Marcus Aurelius", "text": "The happiness of your life depends upon the quality of your thoughts.", "source": "Meditations"},
+    {"author": "Marcus Aurelius", "text": "Waste no more time arguing about what a good man should be. Be one.", "source": "Meditations"},
+    {"author": "Marcus Aurelius", "text": "When you arise in the morning, think of what a precious privilege it is to be alive — to breathe, to think, to enjoy, to love.", "source": "Meditations"},
+    {"author": "Marcus Aurelius", "text": "The soul becomes dyed with the color of its thoughts.", "source": "Meditations"},
+    {"author": "Marcus Aurelius", "text": "Accept the things to which fate binds you, and love the people with whom fate brings you together, and do so with all your heart.", "source": "Meditations"},
+    {"author": "Epictetus", "text": "It's not what happens to you, but how you react to it that matters.", "source": "Discourses"},
+    {"author": "Epictetus", "text": "First say to yourself what you would be; and then do what you have to do.", "source": "Discourses"},
+    {"author": "Epictetus", "text": "No man is free who is not master of himself.", "source": "Discourses"},
+    {"author": "Epictetus", "text": "Make the best use of what is in your power, and take the rest as it happens.", "source": "Discourses"},
+    {"author": "Epictetus", "text": "He who laughs at himself never runs out of things to laugh at.", "source": "Discourses"},
+    {"author": "Seneca", "text": "We suffer more often in imagination than in reality.", "source": "Letters to Lucilius"},
+    {"author": "Seneca", "text": "Luck is what happens when preparation meets opportunity.", "source": "Letters to Lucilius"},
+    {"author": "Seneca", "text": "It is not that we have a short time to live, but that we waste a great deal of it.", "source": "On the Shortness of Life"},
+    {"author": "Seneca", "text": "Hang on to your youthful enthusiasms — you'll be able to use them better when you're older.", "source": "Letters to Lucilius"},
+    {"author": "Seneca", "text": "Sometimes even to live is an act of courage.", "source": "Letters to Lucilius"},
+    {"author": "Seneca", "text": "Begin at once to live, and count each separate day as a separate life.", "source": "Letters to Lucilius"}
+  ],
+  "heroes": [
+    {"author": "J.R.R. Tolkien", "text": "All that is gold does not glitter, not all those who wander are lost.", "source": "The Fellowship of the Ring"},
+    {"author": "J.R.R. Tolkien", "text": "I will not say: do not weep; for not all tears are an evil.", "source": "The Return of the King"},
+    {"author": "J.R.R. Tolkien", "text": "There is some good in this world, Mr. Frodo, and it's worth fighting for.", "source": "The Two Towers"},
+    {"author": "J.R.R. Tolkien", "text": "It is not despair, for despair is only for those who see the end beyond all doubt. We do not.", "source": "The Fellowship of the Ring"},
+    {"author": "J.R.R. Tolkien", "text": "Faithless is he that says farewell when the road darkens.", "source": "The Fellowship of the Ring"},
+    {"author": "J.R.R. Tolkien", "text": "The world is indeed full of peril, and in it there are many dark places; but still there is much that is fair.", "source": "The Fellowship of the Ring"},
+    {"author": "G.K. Chesterton", "text": "The world will never starve for want of wonders; but only for want of wonder.", "source": "Tremendous Trifles"},
+    {"author": "G.K. Chesterton", "text": "Fairy tales do not tell children the dragons exist. Children already know that dragons exist. Fairy tales tell children the dragons can be killed.", "source": "Tremendous Trifles"},
+    {"author": "G.K. Chesterton", "text": "The true soldier fights not because he hates what is in front of him, but because he loves what is behind him.", "source": "The New Jerusalem"},
+    {"author": "G.K. Chesterton", "text": "Hope is the power of being cheerful in circumstances which we know to be desperate.", "source": "Heretics"},
+    {"author": "G.K. Chesterton", "text": "When it comes to life, the critical thing is whether you take things for granted or take them with gratitude.", "source": "Various"},
+    {"author": "C.S. Lewis", "text": "You can't go back and change the beginning, but you can start where you are and change the ending.", "source": "Various"},
+    {"author": "C.S. Lewis", "text": "Hardships often prepare ordinary people for an extraordinary destiny.", "source": "Various"},
+    {"author": "C.S. Lewis", "text": "There are far, far better things ahead than any we leave behind.", "source": "Letters"},
+    {"author": "C.S. Lewis", "text": "Getting over a painful experience is much like crossing monkey bars. You have to let go at some point in order to move forward.", "source": "Various"},
+    {"author": "C.S. Lewis", "text": "Integrity is doing the right thing, even when no one is watching.", "source": "Various"},
+    {"author": "C.S. Lewis", "text": "We are not necessarily doubting that God will do the best for us; we are wondering how painful the best will turn out to be.", "source": "Letters to Malcolm"}
+  ],
+  "recovery": [
+    {"author": "Bill W.", "text": "We are going to know a new freedom and a new happiness.", "source": "Alcoholics Anonymous Big Book"},
+    {"author": "AA Saying", "text": "One day at a time.", "source": "Traditional"},
+    {"author": "AA Saying", "text": "Progress, not perfection.", "source": "Traditional"},
+    {"author": "AA Saying", "text": "Let go and let God.", "source": "Traditional"},
+    {"author": "AA Saying", "text": "The only requirement for membership is a desire to stop.", "source": "Tradition Three"},
+    {"author": "AA Saying", "text": "This too shall pass.", "source": "Traditional"},
+    {"author": "AA Saying", "text": "You are not alone.", "source": "Traditional"},
+    {"author": "Reinhold Niebuhr", "text": "God, grant me the serenity to accept the things I cannot change, courage to change the things I can, and wisdom to know the difference.", "source": "Serenity Prayer"}
+  ]
+}

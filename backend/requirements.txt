@@ -1,0 +1,15 @@
+fastapi==0.115.*
+uvicorn[standard]==0.34.*
+sqlalchemy[asyncio]==2.0.*
+aiosqlite==0.20.*
+pydantic==2.10.*
+pydantic-settings==2.7.*
+python-multipart==0.0.18
+python-jose[cryptography]==3.3.*
+passlib[bcrypt]==1.7.*
+httpx==0.28.*
+openai==1.61.*
+anthropic==0.43.*
+weasyprint==63.*
+markdown==3.7.*
+python-dateutil==2.9.*
