@@ -116,8 +116,9 @@ export default function SettingsPage() {
         faith_notes: "",
         about_me: "",
         heroes: [],
+        reset: true,
       });
-      alert("Onboarding reset. Refresh the page to start setup again.");
+      alert("Onboarding has been reset. Refresh the page to start the setup wizard again.");
     } catch (e) {
       alert("Failed to reset onboarding.");
     } finally {

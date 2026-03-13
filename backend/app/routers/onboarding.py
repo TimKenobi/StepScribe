@@ -17,6 +17,7 @@ class OnboardingData(BaseModel):
     faith_notes: str = ""
     about_me: str = ""
     heroes: list[dict] | None = None  # [{"name": ..., "description": ...}]
+    reset: bool = False
 
 
 class OnboardingStatus(BaseModel):
@@ -55,10 +56,37 @@ async def get_status(user_id: str = "default", db: AsyncSession = Depends(get_db
 
 @router.post("/complete")
 async def complete_onboarding(data: OnboardingData, db: AsyncSession = Depends(get_db)):
-    # Save faith tradition
     stmt = select(UserPreferences).where(UserPreferences.user_id == data.user_id)
     result = await db.execute(stmt)
     prefs = result.scalar_one_or_none()
+
+    if data.reset:
+        # Reset mode
+        if prefs:
+            prefs.faith_tradition = ""
+            prefs.faith_notes = ""
+            prefs.about_me = ""
+            prefs.onboarding_complete = False
+        else:
+            prefs = UserPreferences(
+                user_id=data.user_id,
+                onboarding_complete=False,
+            )
+            db.add(prefs)
+
+        # Clear all heroes
+        hero_stmt = select(UserHero).where(UserHero.user_id == data.user_id)
+        hero_result = await db.execute(hero_stmt)
+        for h in hero_result.scalars().all():
+            await db.delete(h)
+
+        await db.commit()
+        return {
+            "onboarding_complete": False,
+            "message": "Onboarding has been reset"
+        }
+
+    # Normal completion path
     if prefs:
         prefs.faith_tradition = data.faith_tradition
         prefs.faith_notes = data.faith_notes
@@ -74,16 +102,13 @@ async def complete_onboarding(data: OnboardingData, db: AsyncSession = Depends(g
         )
         db.add(prefs)
 
-    # Save heroes if provided (otherwise they'll get defaults on first visit)
+    # Save heroes if provided
     if data.heroes is not None:
-        # Clear existing
         hero_stmt = select(UserHero).where(UserHero.user_id == data.user_id)
         hero_result = await db.execute(hero_stmt)
         for h in hero_result.scalars().all():
             await db.delete(h)
-        # Add new
-        heroes_to_add = data.heroes if data.heroes else DEFAULT_HEROES
-        for i, h in enumerate(heroes_to_add):
+        for i, h in enumerate(data.heroes):
             hero = UserHero(
                 user_id=data.user_id,
                 name=h["name"],
@@ -114,7 +139,7 @@ async def complete_onboarding(data: OnboardingData, db: AsyncSession = Depends(g
 
     await db.commit()
 
-    # If they picked a tradition with known figures, suggest adding them as heroes
+    # Return suggested figures from tradition
     tradition = FAITH_TRADITIONS.get(data.faith_tradition, {})
     return {
         "onboarding_complete": True,
