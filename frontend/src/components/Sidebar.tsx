@@ -14,16 +14,18 @@ import {
   Wifi,
   WifiOff,
   Church,
+  Brain,
 } from "lucide-react";
 import { useOffline } from "@/hooks/useOffline";
 
 const NAV_ITEMS = [
   { href: "/", label: "Journal", icon: BookOpen },
-  { href: "/mood", label: "Inner Weather", icon: Cloud },
   { href: "/sponsor", label: "AI Sponsor", icon: MessageCircle },
   { href: "/progress", label: "One Day at a Time", icon: Calendar },
+  { href: "/mood", label: "Inner Weather", icon: Cloud },
   { href: "/heroes", label: "Heroes & Wisdom", icon: Star },
   { href: "/faith", label: "Faith & Tradition", icon: Church },
+  { href: "/memory", label: "AI Memory", icon: Brain },
   { href: "/groups", label: "Group Journal", icon: Users },
   { href: "/export", label: "Journal Book", icon: Download },
   { href: "/settings", label: "Settings", icon: Settings },

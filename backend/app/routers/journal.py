@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.models import JournalEntry
+from app.services.memory_service import extract_memories
 
 router = APIRouter()
 
@@ -18,6 +19,7 @@ class EntryCreate(BaseModel):
     content_html: str = ""
     prompt_used: str | None = None
     is_draft: bool = True
+    sections_included: dict | None = None
 
 
 class EntryUpdate(BaseModel):
@@ -25,6 +27,7 @@ class EntryUpdate(BaseModel):
     content: str | None = None
     content_html: str | None = None
     is_draft: bool | None = None
+    sections_included: dict | None = None
 
 
 class EntryOut(BaseModel):
@@ -35,6 +38,7 @@ class EntryOut(BaseModel):
     content_html: str
     prompt_used: str | None
     is_draft: bool
+    sections_included: dict | None
     created_at: datetime
     updated_at: datetime
 
@@ -81,12 +85,21 @@ async def update_entry(entry_id: str, data: EntryUpdate, db: AsyncSession = Depe
     entry = await db.get(JournalEntry, entry_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+    was_draft = entry.is_draft
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(entry, key, value)
     entry.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(entry)
+
+    # Extract memories when publishing (draft -> not draft)
+    if was_draft and not entry.is_draft and entry.content:
+        try:
+            await extract_memories(entry.content, entry.user_id, "journal", entry.id, db)
+        except Exception:
+            pass
+
     return entry
 
 

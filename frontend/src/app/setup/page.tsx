@@ -2,26 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { faithApi, onboardingApi } from "@/lib/api";
+import { faithApi, heroesApi, onboardingApi } from "@/lib/api";
 import type { FaithTradition } from "@/lib/types";
-import { Check, ChevronRight, ChevronLeft, Flame } from "lucide-react";
-
-const DEFAULT_HEROES = [
-  { name: "J.R.R. Tolkien", description: "Showed that ordinary people can carry extraordinary burdens." },
-  { name: "G.K. Chesterton", description: "Believed gratitude is the highest form of thought." },
-  { name: "C.S. Lewis", description: "Wrote honestly about grief, faith, and becoming who you're meant to be." },
-  { name: "Marcus Aurelius", description: "Stoic emperor. Focus on what matters and what doesn't." },
-  { name: "Epictetus", description: "Born a slave. Focus only on what you can control." },
-  { name: "Seneca", description: "Wrote about anger, grief, and life with unflinching honesty." },
-];
+import { Check, ChevronRight, ChevronLeft, Flame, User } from "lucide-react";
 
 export default function SetupPage() {
   const router = useRouter();
-  const [step, setStep] = useState(0); // 0=welcome, 1=faith, 2=heroes, 3=done
+  const [step, setStep] = useState(0); // 0=welcome, 1=faith, 2=about, 3=heroes, 4=done
   const [traditions, setTraditions] = useState<Record<string, FaithTradition>>({});
   const [selectedFaith, setSelectedFaith] = useState("");
   const [faithNotes, setFaithNotes] = useState("");
-  const [heroes, setHeroes] = useState(DEFAULT_HEROES.map((h) => ({ ...h, selected: true })));
+  const [aboutMe, setAboutMe] = useState("");
+  const [heroes, setHeroes] = useState<Array<{ name: string; description: string; selected: boolean }>>([]);
   const [customHero, setCustomHero] = useState("");
   const [suggestedFigures, setSuggestedFigures] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -29,7 +21,22 @@ export default function SetupPage() {
   useEffect(() => {
     checkStatus();
     loadTraditions();
+    loadDefaultHeroes();
   }, []);
+
+  const loadDefaultHeroes = async () => {
+    try {
+      const defaults = await heroesApi.defaults();
+      setHeroes(defaults.map((h: any) => ({ name: h.name, description: h.description, selected: true })));
+    } catch {
+      // Fallback minimal list
+      setHeroes([
+        { name: "St. Augustine", description: "Doctor of the Church. Wrote the Confessions.", selected: true },
+        { name: "G.K. Chesterton", description: "Catholic convert, writer, and apologist.", selected: true },
+        { name: "Matt Talbot", description: "Patron of addiction recovery.", selected: true },
+      ]);
+    }
+  };
 
   const checkStatus = async () => {
     try {
@@ -70,14 +77,15 @@ export default function SetupPage() {
       const result = await onboardingApi.complete({
         faith_tradition: selectedFaith,
         faith_notes: faithNotes,
+        about_me: aboutMe,
         heroes: selectedHeroes,
       });
       if (result.suggested_figures?.length > 0) {
         setSuggestedFigures(result.suggested_figures.filter((f: string) => !heroes.some((h) => h.name === f)));
       }
-      setStep(3);
+      setStep(4);
     } catch {
-      setStep(3);
+      setStep(4);
     } finally {
       setLoading(false);
     }
@@ -180,8 +188,55 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* Step 2: Heroes */}
+        {/* Step 2: About You */}
         {step === 2 && (
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <User size={24} style={{ color: "var(--accent)" }} />
+              <h2 className="text-xl font-semibold" style={{ color: "var(--text-primary)" }}>
+                What Should I Know About You?
+              </h2>
+            </div>
+            <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
+              Tell your AI companion about yourself — your situation, what you&apos;re working on,
+              anything that would help it understand you. Like meeting a sponsor for the first time.
+            </p>
+            <textarea
+              value={aboutMe}
+              onChange={(e) => setAboutMe(e.target.value)}
+              placeholder={`For example:\n- I'm a 35-year-old father of two, working as a carpenter\n- I struggle with alcohol — sober 6 months now\n- I attend the Traditional Latin Mass at SSPX chapel\n- My biggest triggers are stress at work and loneliness\n- I pray the Rosary daily and it helps me stay grounded`}
+              rows={8}
+              className="w-full px-4 py-3 rounded-lg text-sm outline-none resize-none leading-relaxed"
+              style={{
+                backgroundColor: "var(--bg-primary)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border)",
+              }}
+            />
+            <p className="text-xs mt-2 mb-6" style={{ color: "var(--text-muted)" }}>
+              This is private and only used to personalize your AI companion. You can edit it anytime in Settings.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep(1)}
+                className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <ChevronLeft size={14} /> Back
+              </button>
+              <button
+                onClick={() => setStep(3)}
+                className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1"
+                style={{ backgroundColor: "var(--accent)", color: "#fff" }}
+              >
+                {aboutMe.trim() ? "Next" : "Skip"} <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Heroes */}
+        {step === 3 && (
           <div>
             <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
               Your Heroes
@@ -235,7 +290,7 @@ export default function SetupPage() {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => setStep(1)}
+                onClick={() => setStep(2)}
                 className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1"
                 style={{ color: "var(--text-muted)" }}
               >
@@ -253,8 +308,8 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* Step 3: Done */}
-        {step === 3 && (
+        {/* Step 4: Done */}
+        {step === 4 && (
           <div className="text-center">
             <div className="mb-6 flex justify-center">
               <Flame size={48} style={{ color: "var(--accent)" }} />
@@ -263,10 +318,10 @@ export default function SetupPage() {
               You&apos;re all set.
             </h2>
             <p className="text-sm mb-2" style={{ color: "var(--text-secondary)" }}>
-              Your companion knows your tradition and your heroes.
+              Your companion knows your tradition, your heroes, and a bit about you.
             </p>
             <p className="text-xs mb-6" style={{ color: "var(--text-muted)" }}>
-              You can change any of this anytime in Settings, Heroes, or Faith &amp; Tradition.
+              You can change any of this anytime in Settings, Heroes, Faith &amp; Tradition, or AI Memory.
             </p>
 
             {/* If the tradition suggested figures, offer to add them */}

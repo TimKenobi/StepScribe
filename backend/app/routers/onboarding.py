@@ -8,20 +8,14 @@ from app.models.models import UserPreferences, UserHero, FAITH_TRADITIONS
 
 router = APIRouter()
 
-DEFAULT_HEROES = [
-    {"name": "J.R.R. Tolkien", "description": "Author of The Lord of the Rings. Showed that ordinary people can carry extraordinary burdens — and that the journey home is its own kind of courage."},
-    {"name": "G.K. Chesterton", "description": "Writer and thinker. Believed that gratitude is the highest form of thought, and that wonder is the beginning of wisdom."},
-    {"name": "C.S. Lewis", "description": "Author and theologian. Wrote honestly about grief, faith, and the painful process of becoming who you're meant to be."},
-    {"name": "Marcus Aurelius", "description": "Roman Emperor and Stoic philosopher. Wrote Meditations as a private journal — reminders to himself about what matters and what doesn't."},
-    {"name": "Epictetus", "description": "Born a slave, became a great Stoic teacher. Core teaching: focus only on what you can control."},
-    {"name": "Seneca", "description": "Stoic philosopher. Wrote about anger, grief, and the shortness of life with unflinching honesty."},
-]
+from app.routers.heroes import DEFAULT_HEROES
 
 
 class OnboardingData(BaseModel):
     user_id: str = "default"
     faith_tradition: str = ""
     faith_notes: str = ""
+    about_me: str = ""
     heroes: list[dict] | None = None  # [{"name": ..., "description": ...}]
 
 
@@ -68,12 +62,14 @@ async def complete_onboarding(data: OnboardingData, db: AsyncSession = Depends(g
     if prefs:
         prefs.faith_tradition = data.faith_tradition
         prefs.faith_notes = data.faith_notes
+        prefs.about_me = data.about_me
         prefs.onboarding_complete = True
     else:
         prefs = UserPreferences(
             user_id=data.user_id,
             faith_tradition=data.faith_tradition,
             faith_notes=data.faith_notes,
+            about_me=data.about_me,
             onboarding_complete=True,
         )
         db.add(prefs)

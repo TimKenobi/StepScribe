@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, DateTime, Integer, Boolean, ForeignKey, Float
+from sqlalchemy import String, Text, DateTime, Integer, Boolean, ForeignKey, Float, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -28,6 +28,8 @@ class User(Base):
     moods: Mapped[list["MoodEntry"]] = relationship(back_populates="user")
     heroes: Mapped[list["UserHero"]] = relationship(back_populates="user")
     preferences: Mapped["UserPreferences"] = relationship(back_populates="user", uselist=False)
+    memories: Mapped[list["AIMemory"]] = relationship(back_populates="user")
+    conversations: Mapped[list["Conversation"]] = relationship(back_populates="user")
 
 
 # Available faith traditions — used by onboarding and AI context
@@ -108,6 +110,7 @@ class UserPreferences(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), unique=True)
     faith_tradition: Mapped[str] = mapped_column(String(50), default="")
     faith_notes: Mapped[str] = mapped_column(Text, default="")
+    about_me: Mapped[str] = mapped_column(Text, default="")
     onboarding_complete: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
@@ -125,11 +128,15 @@ class JournalEntry(Base):
     content_html: Mapped[str] = mapped_column(Text, default="")
     prompt_used: Mapped[str] = mapped_column(Text, nullable=True)
     is_draft: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Which sections are included in this entry (for review/export)
+    # e.g. {"mood": true, "conversation": true, "heroes": false}
+    sections_included: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
     user: Mapped["User"] = relationship(back_populates="entries")
     mood: Mapped["MoodEntry"] = relationship(back_populates="entry", uselist=False)
+    conversations: Mapped[list["Conversation"]] = relationship(back_populates="entry")
 
 
 # Inner Weather mood system — poetic, not emojis
@@ -210,3 +217,43 @@ class SharedEntry(Base):
     group_id: Mapped[str] = mapped_column(ForeignKey("group_journals.id"))
     shared_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     shared_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+# ──────────────────────────────────────────────
+# AI Memory — persistent knowledge the AI learns about you
+# ──────────────────────────────────────────────
+class AIMemory(Base):
+    __tablename__ = "ai_memories"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    # Category: struggle, strength, pattern, relationship, trigger, insight, preference, milestone
+    category: Mapped[str] = mapped_column(String(50))
+    content: Mapped[str] = mapped_column(Text)
+    # Source that generated this memory
+    source: Mapped[str] = mapped_column(String(50), default="conversation")  # conversation, journal, mood, onboarding
+    source_id: Mapped[str] = mapped_column(String(36), nullable=True)  # entry_id or conversation_id
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    user: Mapped["User"] = relationship(back_populates="memories")
+
+
+# ──────────────────────────────────────────────
+# Conversations — persistent chat records tied to journal entries
+# ──────────────────────────────────────────────
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    entry_id: Mapped[str] = mapped_column(ForeignKey("journal_entries.id"), nullable=True)
+    # JSON array of {role, content, timestamp}
+    messages: Mapped[list] = mapped_column(JSON, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)  # False = user ended conversation
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    user: Mapped["User"] = relationship(back_populates="conversations")
+    entry: Mapped["JournalEntry"] = relationship(back_populates="conversations")

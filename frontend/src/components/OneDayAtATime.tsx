@@ -6,6 +6,8 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday
 interface OneDayAtATimeProps {
   journaledDates: string[]; // ISO date strings of days with entries
   currentMonth?: Date;
+  onDayClick?: (dateStr: string) => void;
+  selectedDate?: string | null;
 }
 
 /**
@@ -18,6 +20,8 @@ interface OneDayAtATimeProps {
 export default function OneDayAtATime({
   journaledDates,
   currentMonth = new Date(),
+  onDayClick,
+  selectedDate,
 }: OneDayAtATimeProps) {
   const days = useMemo(() => {
     const start = startOfMonth(currentMonth);
@@ -74,15 +78,26 @@ export default function OneDayAtATime({
           const dateStr = format(day, "yyyy-MM-dd");
           const hasEntry = journaledSet.has(dateStr);
           const today = isToday(day);
+          const isSelected = selectedDate === dateStr;
 
           return (
-            <div
+            <button
               key={dateStr}
-              className="aspect-square flex items-center justify-center rounded-lg text-xs relative"
+              onClick={() => onDayClick?.(dateStr)}
+              className="aspect-square flex items-center justify-center rounded-lg text-xs relative transition-colors"
               style={{
-                backgroundColor: today ? "var(--bg-tertiary)" : "transparent",
-                border: today ? "1px solid var(--accent-muted)" : "1px solid transparent",
+                backgroundColor: isSelected
+                  ? "var(--accent-muted, rgba(139,92,246,0.15))"
+                  : today
+                  ? "var(--bg-tertiary)"
+                  : "transparent",
+                border: isSelected
+                  ? "1px solid var(--accent)"
+                  : today
+                  ? "1px solid var(--accent-muted, var(--border))"
+                  : "1px solid transparent",
                 color: hasEntry ? "var(--text-primary)" : "var(--text-muted)",
+                cursor: onDayClick ? "pointer" : "default",
               }}
             >
               {day.getDate()}
@@ -93,7 +108,7 @@ export default function OneDayAtATime({
                   style={{ backgroundColor: "var(--accent)" }}
                 />
               )}
-            </div>
+            </button>
           );
         })}
       </div>

@@ -142,6 +142,11 @@ PROMPT_TEMPLATES = {
 }
 
 
+def get_system_prompt() -> str:
+    """Return the base system prompt without any personalization."""
+    return SYSTEM_PROMPT
+
+
 def get_system_prompt_with_heroes(hero_names: list[str], faith_tradition: str = "", faith_notes: str = "") -> str:
     """Build the system prompt, weaving in the user's chosen heroes and faith tradition."""
     extra = ""

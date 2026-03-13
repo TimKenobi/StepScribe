@@ -110,3 +110,52 @@ export const onboardingApi = {
   complete: (data: any) =>
     request<any>("/api/onboarding/complete", { method: "POST", body: JSON.stringify(data) }),
 };
+
+// AI Memory
+export const memoryApi = {
+  list: (userId = "default", category?: string) => {
+    let url = `/api/memory/?user_id=${userId}`;
+    if (category) url += `&category=${category}`;
+    return request<any[]>(url);
+  },
+  add: (data: { user_id?: string; category: string; content: string; source?: string }) =>
+    request<any>("/api/memory/", { method: "POST", body: JSON.stringify(data) }),
+  delete: (id: string) => request<any>(`/api/memory/${id}`, { method: "DELETE" }),
+  toggle: (id: string) => request<any>(`/api/memory/${id}/toggle`, { method: "PATCH" }),
+};
+
+// Conversations
+export const conversationApi = {
+  list: (userId = "default", entryId?: string) => {
+    let url = `/api/conversations/?user_id=${userId}`;
+    if (entryId) url += `&entry_id=${entryId}`;
+    return request<any[]>(url);
+  },
+  get: (id: string) => request<any>(`/api/conversations/${id}`),
+  send: (data: {
+    user_id?: string;
+    conversation_id?: string;
+    entry_id?: string;
+    message: string;
+    template_key?: string;
+  }) =>
+    request<{ conversation_id: string; response: string; messages: any[] }>(
+      "/api/conversations/send",
+      { method: "POST", body: JSON.stringify(data) }
+    ),
+  sendStream: (data: {
+    user_id?: string;
+    conversation_id?: string;
+    entry_id?: string;
+    message: string;
+    template_key?: string;
+  }) =>
+    fetch(`${API_BASE}/api/conversations/send/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  end: (id: string) =>
+    request<any>(`/api/conversations/${id}/end`, { method: "POST" }),
+  templates: () => request<Record<string, any>>("/api/conversations/templates/list"),
+};

@@ -6,6 +6,7 @@ export interface JournalEntry {
   content_html: string;
   prompt_used: string | null;
   is_draft: boolean;
+  sections_included: Record<string, boolean> | null;
   created_at: string;
   updated_at: string;
 }
@@ -91,6 +92,33 @@ export interface OnboardingStatus {
   faith_tradition: string;
   faith_label: string;
   hero_count: number;
+}
+
+export interface AIMemory {
+  id: string;
+  category: string;
+  content: string;
+  source: string;
+  source_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp?: string;
+}
+
+export interface Conversation {
+  id: string;
+  user_id: string;
+  entry_id: string | null;
+  messages: ConversationMessage[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // Inner Weather options — no emojis, just meaningful descriptions
