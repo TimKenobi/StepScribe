@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.models import UserPreferences, UserHero, FAITH_TRADITIONS
+from app.models.models import UserPreferences, UserHero, AIMemory, FAITH_TRADITIONS
 
 router = APIRouter()
 
@@ -91,6 +91,26 @@ async def complete_onboarding(data: OnboardingData, db: AsyncSession = Depends(g
                 sort_order=i,
             )
             db.add(hero)
+
+    # Create AI memory from about_me if provided
+    if data.about_me and data.about_me.strip():
+        memory = AIMemory(
+            user_id=data.user_id,
+            category="preference",
+            content=f"User shared during onboarding: {data.about_me.strip()}",
+            source="onboarding",
+        )
+        db.add(memory)
+
+    # Create AI memory from faith notes if provided
+    if data.faith_notes and data.faith_notes.strip():
+        faith_memory = AIMemory(
+            user_id=data.user_id,
+            category="preference",
+            content=f"Faith background: {data.faith_notes.strip()}",
+            source="onboarding",
+        )
+        db.add(faith_memory)
 
     await db.commit()
 

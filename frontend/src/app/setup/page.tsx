@@ -155,10 +155,13 @@ export default function SetupPage() {
     setCustomHero("");
   };
 
-  const addSuggestedFigure = (name: string) => {
+  const addSuggestedFigure = async (name: string) => {
     if (heroes.some((h) => h.name === name)) return;
     setHeroes((prev) => [...prev, { name, description: "", selected: true }]);
     setSuggestedFigures((prev) => prev.filter((f) => f !== name));
+    try {
+      await heroesApi.add({ user_id: "default", name, description: "" });
+    } catch {}
   };
 
   const completeOnboarding = async () => {
