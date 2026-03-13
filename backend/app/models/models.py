@@ -274,3 +274,26 @@ class Conversation(Base):
 
     user: Mapped["User"] = relationship(back_populates="conversations")
     entry: Mapped["JournalEntry"] = relationship(back_populates="conversations")
+
+
+# ──────────────────────────────────────────────
+# App Configuration — AI provider settings stored in DB
+# ──────────────────────────────────────────────
+class AppConfig(Base):
+    __tablename__ = "app_config"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default="default")
+    ai_provider: Mapped[str] = mapped_column(String(50), default="")
+    openai_api_key: Mapped[str] = mapped_column(Text, default="")
+    openai_model: Mapped[str] = mapped_column(String(100), default="")
+    anthropic_api_key: Mapped[str] = mapped_column(Text, default="")
+    anthropic_model: Mapped[str] = mapped_column(String(100), default="")
+    grok_api_key: Mapped[str] = mapped_column(Text, default="")
+    grok_model: Mapped[str] = mapped_column(String(100), default="")
+    grok_base_url: Mapped[str] = mapped_column(String(500), default="")
+    ollama_base_url: Mapped[str] = mapped_column(String(500), default="")
+    ollama_model: Mapped[str] = mapped_column(String(100), default="")
+    custom_ai_base_url: Mapped[str] = mapped_column(String(500), default="")
+    custom_ai_api_key: Mapped[str] = mapped_column(Text, default="")
+    custom_ai_model: Mapped[str] = mapped_column(String(100), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)

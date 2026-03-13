@@ -3,10 +3,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
 
 from app.config import settings
-from app.database import init_db
-from app.routers import journal, ai, mood, heroes, export, groups, sync, faith, onboarding, memory, conversations, uploads
+from app.database import init_db, async_session
+from app.routers import journal, ai, mood, heroes, export, groups, sync, faith, onboarding, memory, conversations, uploads, app_settings
 
 
 @asynccontextmanager
@@ -15,6 +16,19 @@ async def lifespan(app: FastAPI):
     for d in [settings.data_dir, settings.export_dir, settings.upload_dir]:
         os.makedirs(d, exist_ok=True)
     await init_db()
+
+    # Load AI config from DB (overrides .env defaults)
+    try:
+        from app.models.models import AppConfig
+        from app.routers.app_settings import apply_config_to_settings
+        async with async_session() as session:
+            result = await session.execute(select(AppConfig).where(AppConfig.id == "default"))
+            config = result.scalar_one_or_none()
+            if config:
+                apply_config_to_settings(config)
+    except Exception:
+        pass  # First run — table may not exist yet
+
     yield
 
 
@@ -48,6 +62,7 @@ app.include_router(export.router, prefix="/api/export", tags=["export"])
 app.include_router(groups.router, prefix="/api/groups", tags=["groups"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(uploads.router, prefix="/api/uploads", tags=["uploads"])
+app.include_router(app_settings.router, prefix="/api/settings", tags=["settings"])
 
 
 @app.get("/health")

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus, Save, Trash2, BookOpen, MessageCircle, X,
   ChevronDown, ChevronUp, Send, Sparkles, Eye, EyeOff, Paperclip, Image,
@@ -9,7 +10,7 @@ import Editor from "@/components/Editor";
 import MoodWeather from "@/components/MoodWeather";
 import VoiceInput from "@/components/VoiceInput";
 import HeroQuotes from "@/components/HeroQuotes";
-import { journalApi, moodApi, conversationApi, uploadsApi } from "@/lib/api";
+import { journalApi, moodApi, conversationApi, uploadsApi, onboardingApi } from "@/lib/api";
 import { saveOfflineEntry } from "@/lib/storage";
 import { isOnline as checkOnline } from "@/lib/storage";
 
@@ -41,6 +42,7 @@ interface AttachmentItem {
 }
 
 export default function JournalPage() {
+  const router = useRouter();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [activeEntry, setActiveEntry] = useState<Entry | null>(null);
   const [title, setTitle] = useState("");
@@ -72,10 +74,17 @@ export default function JournalPage() {
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
+    // Check onboarding — redirect to setup if not complete
+    onboardingApi.status().then((status) => {
+      if (!status.onboarding_complete) {
+        router.push("/setup");
+        return;
+      }
+    }).catch(() => {});
     loadEntries();
     checkOnline().then(setOnline);
     conversationApi.templates().then(setTemplates).catch(() => {});
-  }, []);
+  }, [router]);
 
   const loadEntries = async () => {
     try { setEntries(await journalApi.list()); } catch {}

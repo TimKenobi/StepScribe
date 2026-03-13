@@ -188,3 +188,12 @@ export const conversationApi = {
     request<any>(`/api/conversations/${id}/end`, { method: "POST" }),
   templates: () => request<Record<string, any>>("/api/conversations/templates/list"),
 };
+
+// App Settings (AI config)
+export const settingsApi = {
+  getAI: () => request<any>("/api/settings/ai"),
+  updateAI: (data: Record<string, string>) =>
+    request<any>("/api/settings/ai", { method: "PUT", body: JSON.stringify(data) }),
+  testAI: () =>
+    request<{ status: string; provider: string; message: string }>("/api/settings/ai/test", { method: "POST" }),
+};

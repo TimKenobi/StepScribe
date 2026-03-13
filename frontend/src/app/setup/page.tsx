@@ -2,13 +2,22 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { faithApi, heroesApi, onboardingApi } from "@/lib/api";
+import { faithApi, heroesApi, onboardingApi, settingsApi } from "@/lib/api";
 import type { FaithTradition } from "@/lib/types";
-import { Check, ChevronRight, ChevronLeft, Flame, User } from "lucide-react";
+import { Check, ChevronRight, ChevronLeft, Flame, User, Cpu, Loader2, CheckCircle, XCircle } from "lucide-react";
+
+const PROVIDERS = [
+  { key: "grok", label: "Grok (xAI)", desc: "Fast, witty, excellent reasoning. Recommended.", url: "https://console.x.ai/", modelDefault: "grok-3" },
+  { key: "openai", label: "OpenAI (GPT-4)", desc: "Industry standard. Reliable and versatile.", url: "https://platform.openai.com/api-keys", modelDefault: "gpt-4o" },
+  { key: "anthropic", label: "Anthropic (Claude)", desc: "Deep, thoughtful, careful reasoning.", url: "https://console.anthropic.com/", modelDefault: "claude-sonnet-4-20250514" },
+  { key: "ollama", label: "Ollama (Local)", desc: "Run models on your machine. 100% private — nothing leaves your computer.", url: "https://ollama.ai", modelDefault: "llama3" },
+  { key: "custom", label: "Custom Endpoint", desc: "Any OpenAI-compatible API (LM Studio, vLLM, etc).", url: "", modelDefault: "" },
+];
 
 export default function SetupPage() {
   const router = useRouter();
-  const [step, setStep] = useState(0); // 0=welcome, 1=faith, 2=about, 3=heroes, 4=done
+  // Steps: 0=welcome, 1=AI config, 2=faith, 3=about, 4=heroes, 5=done
+  const [step, setStep] = useState(0);
   const [traditions, setTraditions] = useState<Record<string, FaithTradition>>({});
   const [selectedFaith, setSelectedFaith] = useState("");
   const [faithNotes, setFaithNotes] = useState("");
@@ -18,18 +27,52 @@ export default function SetupPage() {
   const [suggestedFigures, setSuggestedFigures] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // AI config state
+  const [aiProvider, setAiProvider] = useState("grok");
+  const [apiKey, setApiKey] = useState("");
+  const [aiModel, setAiModel] = useState("");
+  const [ollamaUrl, setOllamaUrl] = useState("http://host.docker.internal:11434");
+  const [customUrl, setCustomUrl] = useState("");
+  const [customKey, setCustomKey] = useState("");
+  const [customModel, setCustomModel] = useState("");
+  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "ok" | "error">("idle");
+  const [testMessage, setTestMessage] = useState("");
+  const [aiConfigLoaded, setAiConfigLoaded] = useState(false);
+
   useEffect(() => {
     checkStatus();
     loadTraditions();
     loadDefaultHeroes();
+    loadAIConfig();
   }, []);
+
+  const loadAIConfig = async () => {
+    try {
+      const config = await settingsApi.getAI();
+      if (config.ai_provider) setAiProvider(config.ai_provider);
+      if (config.openai_model) setAiModel(config.openai_model);
+      if (config.grok_model) setAiModel(config.grok_model);
+      if (config.anthropic_model) setAiModel(config.anthropic_model);
+      if (config.ollama_base_url) setOllamaUrl(config.ollama_base_url);
+      if (config.ollama_model) setAiModel(config.ollama_model);
+      if (config.custom_ai_base_url) setCustomUrl(config.custom_ai_base_url);
+      if (config.custom_ai_model) setCustomModel(config.custom_ai_model);
+      // If they already have a key set from .env, mark as loaded
+      if (config.provider_ready) {
+        setTestStatus("ok");
+        setTestMessage("AI provider already configured.");
+      }
+      setAiConfigLoaded(true);
+    } catch {
+      setAiConfigLoaded(true);
+    }
+  };
 
   const loadDefaultHeroes = async () => {
     try {
       const defaults = await heroesApi.defaults();
       setHeroes(defaults.map((h: any) => ({ name: h.name, description: h.description, selected: true })));
     } catch {
-      // Fallback minimal list
       setHeroes([
         { name: "St. Augustine", description: "Doctor of the Church. Wrote the Confessions.", selected: true },
         { name: "G.K. Chesterton", description: "Catholic convert, writer, and apologist.", selected: true },
@@ -52,6 +95,54 @@ export default function SetupPage() {
       const trads = await faithApi.traditions();
       setTraditions(trads);
     } catch {}
+  };
+
+  const saveAIConfig = async () => {
+    const data: Record<string, string> = { ai_provider: aiProvider };
+
+    if (aiProvider === "openai") {
+      if (apiKey) data.openai_api_key = apiKey;
+      if (aiModel) data.openai_model = aiModel;
+    } else if (aiProvider === "anthropic") {
+      if (apiKey) data.anthropic_api_key = apiKey;
+      if (aiModel) data.anthropic_model = aiModel;
+    } else if (aiProvider === "grok") {
+      if (apiKey) data.grok_api_key = apiKey;
+      if (aiModel) data.grok_model = aiModel;
+    } else if (aiProvider === "ollama") {
+      data.ollama_base_url = ollamaUrl;
+      if (aiModel) data.ollama_model = aiModel;
+    } else if (aiProvider === "custom") {
+      data.custom_ai_base_url = customUrl;
+      if (customKey) data.custom_ai_api_key = customKey;
+      if (customModel) data.custom_ai_model = customModel;
+    }
+
+    await settingsApi.updateAI(data);
+  };
+
+  const testConnection = async () => {
+    setTestStatus("testing");
+    setTestMessage("");
+    try {
+      await saveAIConfig();
+      const result = await settingsApi.testAI();
+      if (result.status === "ok") {
+        setTestStatus("ok");
+        setTestMessage(result.message || "Connection successful!");
+      } else {
+        setTestStatus("error");
+        setTestMessage(result.message || "Connection failed.");
+      }
+    } catch (e: any) {
+      setTestStatus("error");
+      setTestMessage(e.message || "Could not connect.");
+    }
+  };
+
+  const handleAINext = async () => {
+    await saveAIConfig();
+    setStep(2);
   };
 
   const toggleHero = (index: number) => {
@@ -83,21 +174,23 @@ export default function SetupPage() {
       if (result.suggested_figures?.length > 0) {
         setSuggestedFigures(result.suggested_figures.filter((f: string) => !heroes.some((h) => h.name === f)));
       }
-      setStep(4);
+      setStep(5);
     } catch {
-      setStep(4);
+      setStep(5);
     } finally {
       setLoading(false);
     }
   };
 
+  const selectedProvider = PROVIDERS.find((p) => p.key === aiProvider);
   const tradEntries = Object.entries(traditions);
+  const needsKey = aiProvider !== "ollama" && aiProvider !== "custom";
 
   return (
     <div className="min-h-screen flex items-center justify-center p-8" style={{ backgroundColor: "var(--bg-primary)" }}>
       <div className="max-w-xl w-full">
 
-        {/* Step 0: Welcome */}
+        {/* ═══ Step 0: Welcome ═══ */}
         {step === 0 && (
           <div className="text-center">
             <div className="mb-6 flex justify-center">
@@ -123,8 +216,198 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* Step 1: Faith tradition */}
+        {/* ═══ Step 1: AI Provider & API Key ═══ */}
         {step === 1 && (
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <Cpu size={24} style={{ color: "var(--accent)" }} />
+              <h2 className="text-xl font-semibold" style={{ color: "var(--text-primary)" }}>
+                Connect Your AI
+              </h2>
+            </div>
+            <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
+              StepScribe needs an AI provider to power your companion. Choose one and enter your API key.
+              {aiConfigLoaded && testStatus === "ok" && (
+                <span className="block mt-1 text-xs" style={{ color: "var(--success, #4ade80)" }}>
+                  A provider is already configured from your .env file. You can keep it or change it below.
+                </span>
+              )}
+            </p>
+
+            {/* Provider selection */}
+            <div className="space-y-2 mb-6">
+              {PROVIDERS.map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => {
+                    setAiProvider(p.key);
+                    setAiModel(p.modelDefault);
+                    setApiKey("");
+                    setTestStatus("idle");
+                    setTestMessage("");
+                  }}
+                  className="w-full text-left p-3 rounded-lg border transition-colors"
+                  style={{
+                    borderColor: aiProvider === p.key ? "var(--accent)" : "var(--border)",
+                    backgroundColor: aiProvider === p.key ? "var(--bg-tertiary)" : "var(--bg-secondary)",
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium" style={{ color: aiProvider === p.key ? "var(--accent)" : "var(--text-primary)" }}>
+                      {p.label}
+                    </span>
+                    {aiProvider === p.key && <Check size={14} style={{ color: "var(--accent)" }} />}
+                  </div>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{p.desc}</p>
+                </button>
+              ))}
+            </div>
+
+            {/* API Key input */}
+            {needsKey && (
+              <div className="mb-4">
+                <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>
+                  API Key
+                  {selectedProvider?.url && (
+                    <a href={selectedProvider.url} target="_blank" rel="noopener noreferrer"
+                       className="ml-2 underline" style={{ color: "var(--accent)" }}>
+                      Get one here
+                    </a>
+                  )}
+                </label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => { setApiKey(e.target.value); setTestStatus("idle"); }}
+                  placeholder={`Paste your ${selectedProvider?.label || ""} API key`}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                  style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                />
+              </div>
+            )}
+
+            {/* Ollama URL */}
+            {aiProvider === "ollama" && (
+              <div className="mb-4 space-y-3">
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Ollama URL</label>
+                  <input
+                    value={ollamaUrl}
+                    onChange={(e) => setOllamaUrl(e.target.value)}
+                    placeholder="http://host.docker.internal:11434"
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                    style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Model</label>
+                  <input
+                    value={aiModel}
+                    onChange={(e) => setAiModel(e.target.value)}
+                    placeholder="llama3"
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                    style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Custom endpoint */}
+            {aiProvider === "custom" && (
+              <div className="mb-4 space-y-3">
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Base URL</label>
+                  <input
+                    value={customUrl}
+                    onChange={(e) => setCustomUrl(e.target.value)}
+                    placeholder="http://localhost:1234/v1"
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                    style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>API Key (if required)</label>
+                  <input
+                    type="password"
+                    value={customKey}
+                    onChange={(e) => setCustomKey(e.target.value)}
+                    placeholder="Optional"
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                    style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Model name</label>
+                  <input
+                    value={customModel}
+                    onChange={(e) => setCustomModel(e.target.value)}
+                    placeholder="model-name"
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                    style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Model field for key-based providers */}
+            {needsKey && (
+              <div className="mb-4">
+                <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Model (optional)</label>
+                <input
+                  value={aiModel}
+                  onChange={(e) => setAiModel(e.target.value)}
+                  placeholder={selectedProvider?.modelDefault || "default"}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                  style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                />
+              </div>
+            )}
+
+            {/* Test connection button */}
+            <button
+              onClick={testConnection}
+              disabled={testStatus === "testing"}
+              className="w-full py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2 mb-3"
+              style={{
+                backgroundColor: "var(--bg-tertiary)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border)",
+                opacity: testStatus === "testing" ? 0.6 : 1,
+              }}
+            >
+              {testStatus === "testing" && <Loader2 size={14} className="animate-spin" />}
+              {testStatus === "ok" && <CheckCircle size={14} style={{ color: "var(--success, #4ade80)" }} />}
+              {testStatus === "error" && <XCircle size={14} style={{ color: "#f87171" }} />}
+              {testStatus === "testing" ? "Testing..." : "Test Connection"}
+            </button>
+
+            {testMessage && (
+              <p className="text-xs mb-4 px-1" style={{ color: testStatus === "ok" ? "var(--success, #4ade80)" : "#f87171" }}>
+                {testMessage}
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep(0)}
+                className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <ChevronLeft size={14} /> Back
+              </button>
+              <button
+                onClick={handleAINext}
+                className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1"
+                style={{ backgroundColor: "var(--accent)", color: "#fff" }}
+              >
+                Next <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ Step 2: Faith tradition ═══ */}
+        {step === 2 && (
           <div>
             <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
               Your Faith &amp; Tradition
@@ -171,14 +454,14 @@ export default function SetupPage() {
             )}
             <div className="flex gap-3">
               <button
-                onClick={() => setStep(0)}
+                onClick={() => setStep(1)}
                 className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1"
                 style={{ color: "var(--text-muted)" }}
               >
                 <ChevronLeft size={14} /> Back
               </button>
               <button
-                onClick={() => setStep(2)}
+                onClick={() => setStep(3)}
                 className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1"
                 style={{ backgroundColor: "var(--accent)", color: "#fff" }}
               >
@@ -188,8 +471,8 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* Step 2: About You */}
-        {step === 2 && (
+        {/* ═══ Step 3: About You ═══ */}
+        {step === 3 && (
           <div>
             <div className="flex items-center gap-3 mb-2">
               <User size={24} style={{ color: "var(--accent)" }} />
@@ -218,14 +501,14 @@ export default function SetupPage() {
             </p>
             <div className="flex gap-3">
               <button
-                onClick={() => setStep(1)}
+                onClick={() => setStep(2)}
                 className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1"
                 style={{ color: "var(--text-muted)" }}
               >
                 <ChevronLeft size={14} /> Back
               </button>
               <button
-                onClick={() => setStep(3)}
+                onClick={() => setStep(4)}
                 className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1"
                 style={{ backgroundColor: "var(--accent)", color: "#fff" }}
               >
@@ -235,8 +518,8 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* Step 3: Heroes */}
-        {step === 3 && (
+        {/* ═══ Step 4: Heroes ═══ */}
+        {step === 4 && (
           <div>
             <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
               Your Heroes
@@ -290,7 +573,7 @@ export default function SetupPage() {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => setStep(2)}
+                onClick={() => setStep(3)}
                 className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1"
                 style={{ color: "var(--text-muted)" }}
               >
@@ -308,8 +591,8 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* Step 4: Done */}
-        {step === 4 && (
+        {/* ═══ Step 5: Done ═══ */}
+        {step === 5 && (
           <div className="text-center">
             <div className="mb-6 flex justify-center">
               <Flame size={48} style={{ color: "var(--accent)" }} />
@@ -324,7 +607,6 @@ export default function SetupPage() {
               You can change any of this anytime in Settings, Heroes, Faith &amp; Tradition, or AI Memory.
             </p>
 
-            {/* If the tradition suggested figures, offer to add them */}
             {suggestedFigures.length > 0 && (
               <div className="mb-6 p-4 rounded-lg border text-left" style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}>
                 <p className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
