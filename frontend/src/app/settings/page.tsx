@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { settingsApi } from "@/lib/api";
-import { Check, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { settingsApi, onboardingApi } from "@/lib/api";
+import { Check, Loader2, CheckCircle, XCircle, Trash2, RotateCcw } from "lucide-react";
 
 const PROVIDERS = [
   { key: "grok", label: "Grok (xAI)", url: "https://console.x.ai/", modelDefault: "grok-3" },
@@ -25,6 +25,7 @@ export default function SettingsPage() {
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "ok" | "error">("idle");
   const [testMessage, setTestMessage] = useState("");
   const [maskedKeys, setMaskedKeys] = useState<Record<string, string>>({});
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -103,6 +104,24 @@ export default function SettingsPage() {
     } catch (e: any) {
       setTestStatus("error");
       setTestMessage(e.message || "Could not connect.");
+    }
+  };
+
+  const resetOnboarding = async () => {
+    if (!confirm("Reset onboarding? This will clear your faith, about me, and heroes. You will be taken back to the setup wizard on next visit.")) return;
+    setResetting(true);
+    try {
+      await onboardingApi.complete({
+        faith_tradition: "",
+        faith_notes: "",
+        about_me: "",
+        heroes: [],
+      });
+      alert("Onboarding reset. Refresh the page to start setup again.");
+    } catch (e) {
+      alert("Failed to reset onboarding.");
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -285,6 +304,25 @@ export default function SettingsPage() {
             It draws on your faith tradition, Stoic philosophy, the wisdom of your chosen heroes,
             and 12-step principles to help you journal honestly, let go, and grow — one day at a time.
           </p>
+        </div>
+
+        {/* Danger Zone */}
+        <div className="p-4 rounded-lg border border-red-500/30" style={{ backgroundColor: "var(--bg-secondary)" }}>
+          <h3 className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: "#f87171" }}>
+            <Trash2 size={16} /> Danger Zone
+          </h3>
+          <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+            These actions cannot be undone easily. Use with caution.
+          </p>
+          <button
+            onClick={resetOnboarding}
+            disabled={resetting}
+            className="w-full py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 border border-red-500/50 hover:bg-red-500/10"
+            style={{ color: "#f87171" }}
+          >
+            {resetting ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+            {resetting ? "Resetting..." : "Reset Onboarding"}
+          </button>
         </div>
       </div>
     </div>

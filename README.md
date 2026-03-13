@@ -84,7 +84,7 @@ Built with Traditional Catholic sensibility by default, but fully adaptable to a
 
 ### Prerequisites
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
-- An API key for at least one AI provider (OpenAI, Anthropic, Grok, or a local Ollama instance)
+- Optional: API key for cloud AI (Grok, OpenAI, Anthropic). Local Ollama works without keys.
 
 ### Setup
 
@@ -93,18 +93,19 @@ Built with Traditional Catholic sensibility by default, but fully adaptable to a
 git clone https://github.com/TimKenobi/StepScribe.git
 cd StepScribe
 
-# Copy environment template
-cp .env.example .env
-
-# Edit .env with your API key(s)
-# At minimum, set one of: OPENAI_API_KEY, ANTHROPIC_API_KEY, GROK_API_KEY
-# Or use Ollama locally (no key needed, just: ollama serve)
-
 # Build and start
-docker compose up -d
+docker compose up -d --build
 
-# That's it. Open http://localhost:3100
+# Open http://localhost:3100
+# First visit will launch the onboarding wizard:
+#   1. AI Provider & API Key
+#   2. Faith Tradition
+#   3. About You
+#   4. Your Heroes
+#   5. Done
 ```
+
+**Note**: API keys can now be configured directly in the UI during onboarding or in Settings. The `.env` file is only needed for initial defaults or when using custom endpoints.
 
 ### Default Ports
 | Service | Port |
