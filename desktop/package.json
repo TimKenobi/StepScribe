@@ -2,7 +2,11 @@
   "name": "stepscribe-desktop",
   "version": "1.0.0",
   "description": "StepScribe — A journaling companion for recovery",
-  "author": "Pixel Space Technologies LLC",
+  "author": {
+    "name": "Pixel Space Technologies LLC",
+    "email": "hello@pixelspace.dev"
+  },
+  "homepage": "https://github.com/TimKenobi/StepScribe",
   "license": "MIT",
   "main": "main.js",
   "scripts": {
@@ -13,6 +17,8 @@
     "build:win": "npm run build:frontend && electron-builder --win",
     "build:mac-dmg": "npm run build:frontend && electron-builder --mac dmg --arm64 --x64",
     "build:mac-unsigned": "npm run build:frontend && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --arm64",
+    "build:linux": "npm run build:frontend && electron-builder --linux",
+    "build:all": "npm run build:frontend && electron-builder --mac --win --linux",
     "icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
