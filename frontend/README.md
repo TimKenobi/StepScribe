@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StepScribe Frontend
 
-## Getting Started
+Next.js 16 frontend for StepScribe — the UI layer shared by both Desktop and Docker deployments.
 
-First, run the development server:
+## Tech Stack
+
+- **Next.js 16** with App Router
+- **React 19** with TypeScript 5
+- **Tailwind CSS v4**
+- **TipTap** rich text editor
+
+## Development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Building for Desktop (Static Export)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The desktop app uses a static export that gets served by the Express.js server:
 
-## Learn More
+```bash
+npm run build    # Generates static files in out/
+```
 
-To learn more about Next.js, take a look at the following resources:
+Copy to desktop: `cp -r out ../desktop/frontend-dist`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Building for Docker
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The Dockerfile handles the build automatically within docker compose.
 
-## Deploy on Vercel
+## Pages
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Route | Description |
+|-------|-------------|
+| `/` | Main journal page (editor + AI chat + attachments) |
+| `/sponsor` | Standalone AI Sponsor chat |
+| `/progress` | One Day at a Time calendar |
+| `/memory` | AI Memory management + compaction |
+| `/heroes` | Hero management |
+| `/faith` | Faith tradition picker |
+| `/weather` | Inner Weather mood history |
+| `/setup` | Onboarding wizard (5 steps) |
+| `/export` | Export tools (book, JSON) |
+| `/settings` | AI provider configuration |
+| `/groups` | Group journals |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Key Files
+
+- `src/lib/api.ts` — API client for all endpoints
+- `src/lib/types.ts` — TypeScript interfaces
+- `src/lib/storage.ts` — Offline storage utilities
+- `src/components/` — Reusable UI components (Editor, Sidebar, etc.)

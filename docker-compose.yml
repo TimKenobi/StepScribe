@@ -38,6 +38,24 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Optional: Run Ollama locally inside Docker
+  # Start with: docker compose --profile ollama up -d
+  ollama:
+    image: ollama/ollama:latest
+    container_name: stepscribe-ollama
+    profiles: ["ollama"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          memory: 4G
+
 volumes:
   stepscribe-data:
+    driver: local
+  ollama-data:
     driver: local

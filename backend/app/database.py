@@ -26,6 +26,7 @@ async def init_db():
         migrations = [
             ("user_preferences", "about_me", "TEXT DEFAULT ''"),
             ("journal_entries", "sections_included", "TEXT"),
+            ("journal_entries", "entry_date", "DATE"),
         ]
         for table, column, col_type in migrations:
             try:

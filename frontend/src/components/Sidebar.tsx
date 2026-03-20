@@ -39,8 +39,8 @@ export default function Sidebar() {
     <aside className="w-64 h-screen sticky top-0 flex flex-col border-r"
       style={{ backgroundColor: "var(--bg-secondary)", borderColor: "var(--border)" }}>
 
-      {/* App title */}
-      <div className="px-6 py-5 border-b" style={{ borderColor: "var(--border)" }}>
+      {/* App title — draggable region for macOS traffic lights in desktop */}
+      <div className="px-6 pt-10 pb-5 border-b drag-region" style={{ borderColor: "var(--border)" }}>
         <h1 className="text-lg font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>
           StepScribe
         </h1>

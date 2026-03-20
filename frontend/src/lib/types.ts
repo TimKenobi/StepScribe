@@ -136,6 +136,10 @@ export interface Conversation {
 
 // Inner Weather options — no emojis, just meaningful descriptions
 export const WEATHER_OPTIONS: Record<string, MoodWeather> = {
+  radiant: { label: "Radiant", description: "Glowing. Everything feels alive and beautiful.", intensity: 10 },
+  golden_hour: { label: "Golden Hour", description: "Grateful and warm. The world feels like a gift.", intensity: 9 },
+  mountain_top: { label: "Mountain Top", description: "On top of the world. Strong, accomplished, free.", intensity: 10 },
+  abundant: { label: "Abundant", description: "Overflowing. More than enough joy to share.", intensity: 9 },
   first_light: { label: "First Light", description: "Hopeful. A new beginning on the horizon.", intensity: 8 },
   clear_skies: { label: "Clear Skies", description: "Peaceful and content. Steady ground.", intensity: 9 },
   gentle_breeze: { label: "Gentle Breeze", description: "Light and easy. Things feel manageable.", intensity: 7 },
@@ -152,6 +156,10 @@ export const WEATHER_OPTIONS: Record<string, MoodWeather> = {
 
 // Weather colors mapped by intensity (dark mode friendly, muted tones)
 export const WEATHER_COLORS: Record<string, string> = {
+  radiant: "#d4a843",
+  golden_hour: "#c9a04a",
+  mountain_top: "#7aab6a",
+  abundant: "#8ab07a",
   first_light: "#c4956a",
   clear_skies: "#6b8aaf",
   gentle_breeze: "#7a9a7a",

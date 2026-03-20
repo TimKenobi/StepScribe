@@ -26,3 +26,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Electron build artifacts
+desktop/dist/
+desktop/frontend-dist/

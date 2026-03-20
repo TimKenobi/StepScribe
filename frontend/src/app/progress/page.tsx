@@ -8,10 +8,17 @@ import OneDayAtATime from "@/components/OneDayAtATime";
 import { journalApi, moodApi } from "@/lib/api";
 import { WEATHER_OPTIONS, WEATHER_COLORS } from "@/lib/types";
 
+// Parse server datetime (UTC without Z suffix) to local Date
+function parseUTCDate(isoStr: string): Date {
+  const s = isoStr.endsWith("Z") ? isoStr : isoStr + "Z";
+  return new Date(s);
+}
+
 interface EntryBrief {
   id: string;
   title: string;
   created_at: string;
+  entry_date: string | null;
   is_draft: boolean;
 }
 
@@ -39,7 +46,7 @@ export default function ProgressPage() {
     } catch {}
   };
 
-  const journaledDates = entries.map((e) => e.created_at);
+  const journaledDates = entries.map((e) => e.entry_date || e.created_at);
 
   const handleDayClick = (dateStr: string) => {
     if (selectedDate === dateStr) {
@@ -49,7 +56,10 @@ export default function ProgressPage() {
     }
     setSelectedDate(dateStr);
     const matching = entries.filter(
-      (e) => format(new Date(e.created_at), "yyyy-MM-dd") === dateStr
+      (e) => {
+        const entryDateStr = e.entry_date || format(parseUTCDate(e.created_at), "yyyy-MM-dd");
+        return entryDateStr === dateStr;
+      }
     );
     setDayEntries(matching);
   };
@@ -61,7 +71,7 @@ export default function ProgressPage() {
 
   // Mood for selected date
   const selectedMood = selectedDate
-    ? moodHistory.find((m) => format(new Date(m.created_at), "yyyy-MM-dd") === selectedDate)
+    ? moodHistory.find((m: any) => format(parseUTCDate(m.created_at), "yyyy-MM-dd") === selectedDate)
     : null;
 
   // Recent mood trend (last 14)
@@ -70,7 +80,7 @@ export default function ProgressPage() {
   // Stats
   const totalEntries = entries.filter((e) => !e.is_draft).length;
   const thisMonthEntries = currentMonth ? entries.filter((e) => {
-    const d = new Date(e.created_at);
+    const d = e.entry_date ? new Date(e.entry_date + "T12:00:00") : parseUTCDate(e.created_at);
     return d.getMonth() === currentMonth.getMonth() && d.getFullYear() === currentMonth.getFullYear() && !e.is_draft;
   }).length : 0;
 
@@ -207,11 +217,11 @@ export default function ProgressPage() {
             {recentMoods.map((mood: any, i: number) => {
               const weather = WEATHER_OPTIONS[mood.weather];
               const height = weather ? (weather.intensity / 10) * 100 : 50;
-              const dateStr = format(new Date(mood.created_at), "MMM d");
+              const dateStr = format(parseUTCDate(mood.created_at), "MMM d");
               return (
                 <button
                   key={i}
-                  onClick={() => handleDayClick(format(new Date(mood.created_at), "yyyy-MM-dd"))}
+                  onClick={() => handleDayClick(format(parseUTCDate(mood.created_at), "yyyy-MM-dd"))}
                   className="flex-1 flex flex-col items-center gap-1 cursor-pointer group"
                   title={`${weather?.label} — ${dateStr}`}
                 >

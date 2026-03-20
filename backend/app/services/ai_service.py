@@ -124,12 +124,19 @@ class OllamaProvider(AIProvider):
         self.base_url = settings.ollama_base_url
         self.model = settings.ollama_model
 
-    async def chat(self, messages: list[dict], temperature: float = 0.7) -> str:
+    async def chat(self, messages: list[dict], temperature: float = 0.7, **kwargs) -> str:
+        body: dict = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "options": {"temperature": temperature},
+        }
+        if kwargs.get("format"):
+            body["format"] = kwargs["format"]
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(
                 f"{self.base_url}/api/chat",
-                json={"model": self.model, "messages": messages, "stream": False,
-                      "options": {"temperature": temperature}},
+                json=body,
             )
             resp.raise_for_status()
             return resp.json()["message"]["content"]

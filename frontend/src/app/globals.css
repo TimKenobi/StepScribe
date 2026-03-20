@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/* Electron window drag region */
+.drag-region {
+  -webkit-app-region: drag;
+}
+.drag-region a,
+.drag-region button,
+.drag-region input,
+.drag-region select,
+.drag-region textarea {
+  -webkit-app-region: no-drag;
+}
+
 :root {
   --bg-primary: #0f0f0f;
   --bg-secondary: #1e1e1e;

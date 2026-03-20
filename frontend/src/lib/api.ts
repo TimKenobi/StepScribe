@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8100";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8100";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -51,6 +51,12 @@ export const moodApi = {
     request<any>("/api/mood/", { method: "POST", body: JSON.stringify(data) }),
   history: (userId = "default", limit = 30) =>
     request<any[]>(`/api/mood/history?user_id=${userId}&limit=${limit}`),
+  getByEntry: (entryId: string) =>
+    request<any | null>(`/api/mood/by-entry/${entryId}`),
+  update: (id: string, data: any) =>
+    request<any>(`/api/mood/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    request<any>(`/api/mood/${id}`, { method: "DELETE" }),
 };
 
 // Heroes
@@ -70,6 +76,15 @@ export const exportApi = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error("Export failed");
+    return res.blob();
+  },
+  journalBookMarkdown: async (data: any) => {
+    const res = await fetch(`${API_BASE}/api/export/journal-book`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...data, format: "markdown" }),
     });
     if (!res.ok) throw new Error("Export failed");
     return res.blob();
@@ -122,6 +137,11 @@ export const memoryApi = {
     request<any>("/api/memory/", { method: "POST", body: JSON.stringify(data) }),
   delete: (id: string) => request<any>(`/api/memory/${id}`, { method: "DELETE" }),
   toggle: (id: string) => request<any>(`/api/memory/${id}/toggle`, { method: "PATCH" }),
+  compact: (userId = "default", category?: string) =>
+    request<{ status: string; before: number; after: number; reduced: number; message?: string; errors?: string[] }>(
+      "/api/memory/compact",
+      { method: "POST", body: JSON.stringify({ user_id: userId, category: category || undefined }) },
+    ),
 };
 
 // Uploads
@@ -187,6 +207,27 @@ export const conversationApi = {
   end: (id: string) =>
     request<any>(`/api/conversations/${id}/end`, { method: "POST" }),
   templates: () => request<Record<string, any>>("/api/conversations/templates/list"),
+};
+
+// Ollama Management
+export const ollamaApi = {
+  status: () => request<any>('/api/ollama/status'),
+  models: () => request<any>('/api/ollama/models'),
+  recommended: () => request<any>('/api/ollama/recommended'),
+  pull: (model: string) =>
+    fetch(`${API_BASE}/api/ollama/pull`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model }),
+    }),
+  createStepCompanion: (name = 'stepcompanion', baseModel = 'llama3.3:8b') =>
+    fetch(`${API_BASE}/api/ollama/create-stepcompanion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, base_model: baseModel }),
+    }),
+  installInstructions: () => request<any>('/api/ollama/install-instructions'),
+  validateModel: () => request<any>('/api/ollama/validate-model', { method: 'POST' }),
 };
 
 // App Settings (AI config)

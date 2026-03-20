@@ -80,3 +80,16 @@ async def toggle_memory(memory_id: str, db: AsyncSession = Depends(get_db)):
     memory.is_active = not memory.is_active
     await db.commit()
     return {"id": memory.id, "is_active": memory.is_active}
+
+
+class CompactRequest(BaseModel):
+    user_id: str = "default"
+    category: str | None = None
+
+
+@router.post("/compact")
+async def compact_memories_endpoint(data: CompactRequest, db: AsyncSession = Depends(get_db)):
+    """Compact memories by merging related insights using AI."""
+    from app.services.memory_service import compact_memories
+    result = await compact_memories(data.user_id, db, data.category)
+    return result

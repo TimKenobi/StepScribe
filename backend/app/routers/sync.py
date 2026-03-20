@@ -30,6 +30,7 @@ class SyncEntry(BaseModel):
     prompt_used: str | None = None
     is_draft: bool = True
     sections_included: dict | None = None
+    entry_date: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
     mood_weather: str | None = None
@@ -81,6 +82,15 @@ class SyncPreferences(BaseModel):
     onboarding_complete: bool = False
 
 
+class SyncMood(BaseModel):
+    id: str
+    weather: str
+    note: str = ""
+    energy_level: int = 5
+    entry_id: str | None = None
+    created_at: str | None = None
+
+
 class ImportRequest(BaseModel):
     user_id: str = "default"
     entries: list[SyncEntry]
@@ -88,6 +98,7 @@ class ImportRequest(BaseModel):
 
 class ExportResponse(BaseModel):
     entries: list[SyncEntry]
+    moods: list[SyncMood]
     conversations: list[SyncConversation]
     memories: list[SyncMemory]
     heroes: list[SyncHero]
@@ -119,12 +130,25 @@ async def export_data(user_id: str = "default", db: AsyncSession = Depends(get_d
             prompt_used=e.prompt_used,
             is_draft=e.is_draft,
             sections_included=e.sections_included,
+            entry_date=e.entry_date.isoformat() if e.entry_date else None,
             created_at=e.created_at.isoformat() if e.created_at else None,
             updated_at=e.updated_at.isoformat() if e.updated_at else None,
             mood_weather=mood.weather if mood else None,
             mood_note=mood.note if mood else "",
             mood_energy=mood.energy_level if mood else 5,
         ))
+
+    # ── All moods (including standalone, not linked to entries) ──
+    all_mood_stmt = select(MoodEntry).where(MoodEntry.user_id == user_id).order_by(MoodEntry.created_at)
+    all_mood_result = await db.execute(all_mood_stmt)
+    sync_moods = [
+        SyncMood(
+            id=m.id, weather=m.weather, note=m.note,
+            energy_level=m.energy_level, entry_id=m.entry_id,
+            created_at=m.created_at.isoformat() if m.created_at else None,
+        )
+        for m in all_mood_result.scalars().all()
+    ]
 
     # ── Conversations ──
     conv_stmt = select(Conversation).where(Conversation.user_id == user_id).order_by(Conversation.created_at)
@@ -189,6 +213,7 @@ async def export_data(user_id: str = "default", db: AsyncSession = Depends(get_d
 
     return ExportResponse(
         entries=sync_entries,
+        moods=sync_moods,
         conversations=sync_conversations,
         memories=sync_memories,
         heroes=sync_heroes,

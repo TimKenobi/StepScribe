@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 
-from sqlalchemy import String, Text, DateTime, Integer, Boolean, ForeignKey, Float, JSON
+from sqlalchemy import String, Text, DateTime, Date, Integer, Boolean, ForeignKey, Float, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -131,6 +131,8 @@ class JournalEntry(Base):
     # Which sections are included in this entry (for review/export)
     # e.g. {"mood": true, "conversation": true, "heroes": false}
     sections_included: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # User-settable date for the entry (allows backdating/forward-dating)
+    entry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
@@ -141,6 +143,10 @@ class JournalEntry(Base):
 
 # Inner Weather mood system — poetic, not emojis
 MOOD_WEATHER = {
+    "radiant": {"label": "Radiant", "description": "Glowing. Everything feels alive and beautiful.", "intensity": 10},
+    "golden_hour": {"label": "Golden Hour", "description": "Grateful and warm. The world feels like a gift.", "intensity": 9},
+    "mountain_top": {"label": "Mountain Top", "description": "On top of the world. Strong, accomplished, free.", "intensity": 10},
+    "abundant": {"label": "Abundant", "description": "Overflowing. More than enough joy to share.", "intensity": 9},
     "first_light": {"label": "First Light", "description": "Hopeful. A new beginning on the horizon.", "intensity": 8},
     "clear_skies": {"label": "Clear Skies", "description": "Peaceful and content. Steady ground.", "intensity": 9},
     "gentle_breeze": {"label": "Gentle Breeze", "description": "Light and easy. Things feel manageable.", "intensity": 7},

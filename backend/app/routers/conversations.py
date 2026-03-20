@@ -9,9 +9,9 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.models import Conversation
+from app.models.models import Conversation, JournalEntry
 from app.services.ai_service import get_ai_provider
-from app.services.memory_service import get_memory_context, extract_memories
+from app.services.memory_service import get_memory_context, extract_memories, maybe_auto_compact
 from app.services.sponsor_guidelines import get_system_prompt, get_template, get_all_templates
 
 router = APIRouter()
@@ -89,6 +89,13 @@ async def send_message(data: MessageIn, db: AsyncSession = Depends(get_db)):
     if memory_context:
         system += "\n\n" + memory_context
 
+    # Inject current journal entry content so AI can read it
+    entry_id = data.entry_id or convo.entry_id
+    if entry_id:
+        entry = await db.get(JournalEntry, entry_id)
+        if entry and entry.content:
+            system += f"\n\nCURRENT JOURNAL ENTRY (what the person has written so far):\nTitle: {entry.title}\n{entry.content}"
+
     messages = [{"role": "system", "content": system}]
 
     # Add conversation history
@@ -126,10 +133,11 @@ async def send_message(data: MessageIn, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(convo)
 
-    # Extract memories in background (best-effort)
+    # Extract memories in background (best-effort) + auto-compact
     try:
         text = f"User said: {data.message}\nAI responded: {response}"
         await extract_memories(text, data.user_id, "conversation", convo.id, db)
+        await maybe_auto_compact(data.user_id, db)
     except Exception:
         pass
 
@@ -167,6 +175,13 @@ async def send_message_stream(data: MessageIn, db: AsyncSession = Depends(get_db
     system = get_system_prompt()
     if memory_context:
         system += "\n\n" + memory_context
+
+    # Inject current journal entry content so AI can read it
+    entry_id = data.entry_id or convo.entry_id
+    if entry_id:
+        entry = await db.get(JournalEntry, entry_id)
+        if entry and entry.content:
+            system += f"\n\nCURRENT JOURNAL ENTRY (what the person has written so far):\nTitle: {entry.title}\n{entry.content}"
 
     messages = [{"role": "system", "content": system}]
     for msg in convo.messages:
@@ -211,9 +226,10 @@ async def send_message_stream(data: MessageIn, db: AsyncSession = Depends(get_db
                     c.updated_at = datetime.utcnow()
                     await save_db.commit()
 
-                    # Extract memories
+                    # Extract memories + auto-compact
                     text = f"User said: {data.message}\nAI responded: {full_response}"
                     await extract_memories(text, data.user_id, "conversation", convo_id, save_db)
+                    await maybe_auto_compact(data.user_id, save_db)
         except Exception:
             pass
 

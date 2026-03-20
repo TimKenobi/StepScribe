@@ -1,0 +1,112 @@
+{
+  "name": "stepscribe-desktop",
+  "version": "1.0.0",
+  "description": "StepScribe — A journaling companion for recovery",
+  "author": "Pixel Space Technologies LLC",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "build:frontend": "cd ../frontend && NEXT_PUBLIC_API_URL='' npm run build && rm -rf ../desktop/frontend-dist && cp -r out ../desktop/frontend-dist",
+    "start": "electron .",
+    "dev": "npm run build:frontend && NODE_ENV=development electron .",
+    "build:mac": "npm run build:frontend && electron-builder --mac --arm64 --x64",
+    "build:win": "npm run build:frontend && electron-builder --win",
+    "build:mac-dmg": "npm run build:frontend && electron-builder --mac dmg --arm64 --x64",
+    "build:mac-unsigned": "npm run build:frontend && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --arm64",
+    "icons": "node scripts/generate-icons.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "better-sqlite3": "^11.7.0",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.77.0",
+    "@anthropic-ai/sdk": "^0.36.0"
+  },
+  "devDependencies": {
+    "@electron/notarize": "^2.5.0",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.pixelspace.stepscribe",
+    "productName": "StepScribe",
+    "copyright": "Copyright © 2025 Pixel Space Technologies LLC",
+    "afterSign": "scripts/notarize.js",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/*/{test,__tests__,tests,*.md,*.mdx,*.spec.js,*.test.js}",
+      "!**/.git",
+      "!**/.github",
+      "!**/.vscode",
+      "!frontend",
+      "!backend",
+      "!docker*",
+      "!.env*",
+      "!dist",
+      "!**/*.dmg",
+      "!**/*.blockmap"
+    ],
+    "extraResources": [
+      {
+        "from": "frontend-dist",
+        "to": "frontend-dist"
+      }
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
+    ],
+    "mac": {
+      "category": "public.app-category.lifestyle",
+      "icon": "assets/icon.icns",
+      "identity": "Pixel Space Technologies LLC (X3H9P4VWQ7)",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "notarize": {
+        "teamId": "X3H9P4VWQ7"
+      }
+    },
+    "dmg": {
+      "sign": false,
+      "title": "StepScribe",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico"
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "target": ["AppImage", "deb"],
+      "category": "Utility"
+    }
+  }
+}

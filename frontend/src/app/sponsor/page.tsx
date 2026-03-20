@@ -83,10 +83,21 @@ export default function SponsorPage() {
       });
       setConversationId(result.conversation_id);
       setMessages(result.messages || []);
-    } catch {
+    } catch (err: any) {
+      const errMsg = err?.message || "";
+      let userMsg = "I'm having trouble connecting right now. But I'm here — try again in a moment.";
+      if (errMsg.includes("AI provider error")) {
+        // Extract the actual error from the server
+        try {
+          const parsed = JSON.parse(errMsg.replace(/^API error \d+: /, ""));
+          userMsg = `I couldn't reach the AI provider: ${parsed.detail || errMsg}\n\nCheck your AI settings to make sure the connection is configured correctly.`;
+        } catch {
+          userMsg = `I couldn't reach the AI provider. ${errMsg}\n\nCheck your AI settings to make sure the connection is configured correctly.`;
+        }
+      }
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "I'm having trouble connecting right now. But I'm here — try again in a moment." },
+        { role: "assistant", content: userMsg },
       ]);
     } finally {
       setLoading(false);
@@ -110,7 +121,7 @@ export default function SponsorPage() {
     new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
   return (
-    <div className="h-screen flex flex-col p-6">
+    <div className="h-full flex flex-col p-6">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>

@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.database import init_db, async_session
-from app.routers import journal, ai, mood, heroes, export, groups, sync, faith, onboarding, memory, conversations, uploads, app_settings
+from app.routers import journal, ai, mood, heroes, export, groups, sync, faith, onboarding, memory, conversations, uploads, app_settings, ollama_manage
 
 
 @asynccontextmanager
@@ -63,6 +63,7 @@ app.include_router(groups.router, prefix="/api/groups", tags=["groups"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(uploads.router, prefix="/api/uploads", tags=["uploads"])
 app.include_router(app_settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(ollama_manage.router, prefix="/api/ollama", tags=["ollama"])
 
 
 @app.get("/health")

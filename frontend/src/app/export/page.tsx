@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, FileJson, Upload, Calendar, Settings2 } from "lucide-react";
+import { BookOpen, FileJson, Upload, Calendar, Settings2, FileText } from "lucide-react";
 import { exportApi, syncApi } from "@/lib/api";
 import { downloadJson, importJsonFile } from "@/lib/storage";
 
@@ -16,6 +16,7 @@ export default function ExportPage() {
   const [includeMemories, setIncludeMemories] = useState(true);
   const [includePhotos, setIncludePhotos] = useState(true);
   const [includeStatistics, setIncludeStatistics] = useState(true);
+  const [exportFormat, setExportFormat] = useState<"pdf" | "markdown">("pdf");
   const [generating, setGenerating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
@@ -24,7 +25,7 @@ export default function ExportPage() {
     setGenerating(true);
     setMessage("");
     try {
-      const blob = await exportApi.journalBook({
+      const payload = {
         title: title || undefined,
         author: author || undefined,
         dedication,
@@ -35,14 +36,27 @@ export default function ExportPage() {
         include_memories: includeMemories,
         include_photos: includePhotos,
         include_statistics: includeStatistics,
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `recovery-journal-${new Date().getFullYear()}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setMessage("Your journal book has been downloaded.");
+      };
+      const year = new Date().getFullYear();
+      if (exportFormat === "markdown") {
+        const blob = await exportApi.journalBookMarkdown(payload);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `recovery-journal-${year}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setMessage("Your journal has been exported as Markdown.");
+      } else {
+        const blob = await exportApi.journalBook(payload);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `recovery-journal-${year}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setMessage("Your journal book has been downloaded.");
+      }
     } catch (err: any) {
       setMessage("Could not generate book. Make sure you have published entries.");
     }
@@ -182,13 +196,44 @@ export default function ExportPage() {
             </div>
           </div>
 
+          {/* Format selector */}
+          <div>
+            <label className="text-xs flex items-center gap-1 mb-2" style={{ color: "var(--text-muted)" }}>
+              <FileText size={12} /> Export Format
+            </label>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setExportFormat("pdf")}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-center transition-colors"
+                style={{
+                  backgroundColor: exportFormat === "pdf" ? "var(--accent)" : "var(--bg-primary)",
+                  color: exportFormat === "pdf" ? "#fff" : "var(--text-secondary)",
+                  border: `1px solid ${exportFormat === "pdf" ? "var(--accent)" : "var(--border)"}`,
+                }}
+              >
+                PDF Book
+              </button>
+              <button
+                onClick={() => setExportFormat("markdown")}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-center transition-colors"
+                style={{
+                  backgroundColor: exportFormat === "markdown" ? "var(--accent)" : "var(--bg-primary)",
+                  color: exportFormat === "markdown" ? "#fff" : "var(--text-secondary)",
+                  border: `1px solid ${exportFormat === "markdown" ? "var(--accent)" : "var(--border)"}`,
+                }}
+              >
+                Markdown
+              </button>
+            </div>
+          </div>
+
           <button
             onClick={generateBook}
             disabled={generating}
             className="px-6 py-2.5 rounded-lg text-sm font-medium"
             style={{ backgroundColor: "var(--accent)", color: "#fff", opacity: generating ? 0.5 : 1 }}
           >
-            {generating ? "Generating your book..." : "Generate PDF Book"}
+            {generating ? "Generating..." : exportFormat === "markdown" ? "Export Markdown" : "Generate PDF Book"}
           </button>
         </div>
       </div>

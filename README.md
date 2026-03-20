@@ -2,9 +2,11 @@
 
 **AI-powered recovery journaling — one step at a time.**
 
-StepScribe is a private, self-hosted journaling companion designed for people in addiction recovery. It pairs a rich journaling experience with a persistent AI companion that learns about you over time — like a sponsor who actually remembers what you told them last week.
+StepScribe is a private recovery journaling companion designed for people in addiction recovery. It pairs a rich journaling experience with a persistent AI companion that learns about you over time — like a sponsor who actually remembers what you told them last week.
 
 Built with Traditional Catholic sensibility by default, but fully adaptable to any faith tradition or secular approach.
+
+Available as a **native desktop app** (macOS, Windows, Linux) or as a **self-hosted Docker** deployment.
 
 ---
 
@@ -28,10 +30,13 @@ Built with Traditional Catholic sensibility by default, but fully adaptable to a
 
 ### AI Memory
 - Automatic extraction from journals and conversations
+- **Auto-compaction** — when memories accumulate, the AI automatically merges and summarizes related insights to keep context focused and relevant
+- Manual compaction — trigger memory consolidation on demand per category
 - 9 memory categories: Struggles, Strengths, Patterns, Relationships, Triggers, Insights, Preferences, Milestones, Background
 - Manual memory management — add, toggle, or delete what the AI knows
 - Full context injected into every AI interaction
 - "What should I know about you?" onboarding step
+- Robust JSON extraction using Ollama's `format: "json"` mode for reliable memory parsing
 
 ### Inner Weather (Mood Tracking)
 - 12 poetic mood states (no emojis) — from "Storm" to "Clear Skies"
@@ -59,14 +64,40 @@ Built with Traditional Catholic sensibility by default, but fully adaptable to a
 - No streaks, no pressure — just showing up
 
 ### Export & Sharing
-- Export journal as PDF book
+- Export journal as a formatted **Markdown book** (desktop) or **PDF book** (Docker)
 - JSON export/import for backup
 - Group journals with invite codes
 - Share entries with your group
 
+### Ollama Integration
+- Automatic detection of Ollama installation (installed vs running)
+- Platform-specific install instructions (macOS, Windows, Linux)
+- Model pulling with streaming progress
+- Model validation endpoint
+- Recommended recovery-focused models (Psychologist, Samantha, Llama 3.3, Qwen 3)
+- Custom StepCompanion model creation from Modelfile
+
 ---
 
-## Tech Stack
+## Architecture
+
+StepScribe has two deployment modes:
+
+### 1. Desktop App (Electron)
+A native desktop application with everything bundled — no Docker required.
+
+| Layer | Technology |
+|-------|-----------|
+| **Shell** | Electron 33 |
+| **Frontend** | Next.js 16, React 19, TypeScript 5, Tailwind CSS v4 |
+| **Backend** | Express.js (Node.js), better-sqlite3 |
+| **AI** | Strategy pattern — OpenAI, Anthropic, Grok/xAI, Ollama, Custom |
+| **Editor** | TipTap rich text editor |
+
+The Express server runs inside Electron's Node.js process on port 19847. The frontend is a static export served from the same origin. Data is stored in `~/Library/Application Support/stepscribe-desktop/` (macOS) or equivalent OS paths.
+
+### 2. Docker (Self-Hosted)
+A containerized deployment with Python backend.
 
 | Layer | Technology |
 |-------|-----------|
@@ -82,11 +113,21 @@ Built with Traditional Catholic sensibility by default, but fully adaptable to a
 
 ## Quick Start
 
-### Prerequisites
-- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
-- Optional: API key for cloud AI (Grok, OpenAI, Anthropic). Local Ollama works without keys.
+### Option A: Desktop App
 
-### Setup
+Download the latest release for your platform:
+- **macOS**: `StepScribe-x.x.x-arm64.dmg` (Apple Silicon) or `StepScribe-x.x.x.dmg` (Intel)
+- **Windows**: `StepScribe-Setup-x.x.x.exe`
+- **Linux**: `StepScribe-x.x.x.AppImage` or `.deb`
+
+Open the app. The onboarding wizard will walk you through:
+1. AI Provider setup (Ollama recommended — free, local, private)
+2. Faith Tradition
+3. About You
+4. Your Heroes
+5. Done
+
+### Option B: Docker (Self-Hosted)
 
 ```bash
 # Clone the repository
@@ -97,17 +138,9 @@ cd StepScribe
 docker compose up -d --build
 
 # Open http://localhost:3100
-# First visit will launch the onboarding wizard:
-#   1. AI Provider & API Key
-#   2. Faith Tradition
-#   3. About You
-#   4. Your Heroes
-#   5. Done
 ```
 
-**Note**: API keys can now be configured directly in the UI during onboarding or in Settings. The `.env` file is only needed for initial defaults or when using custom endpoints.
-
-### Default Ports
+**Default Ports:**
 | Service | Port |
 |---------|------|
 | Frontend | `3100` |
@@ -119,12 +152,12 @@ Change in `.env` via `FRONTEND_PORT` and `BACKEND_PORT`.
 
 ```bash
 # Install Ollama: https://ollama.ai
-ollama pull llama3
+ollama pull ALIENTELLIGENCE/psychologist
 ollama serve
 
-# In .env:
+# Configure in the app's Settings page or .env:
 AI_PROVIDER=ollama
-OLLAMA_MODEL=llama3
+OLLAMA_MODEL=ALIENTELLIGENCE/psychologist
 ```
 
 ---
@@ -133,7 +166,16 @@ OLLAMA_MODEL=llama3
 
 ```
 StepScribe/
-├── backend/
+├── desktop/                     # Electron desktop app
+│   ├── main.js                  # Electron main process
+│   ├── preload.js               # Preload script (IPC bridge)
+│   ├── server/
+│   │   ├── index.js             # Express.js API server (all routes)
+│   │   └── ai.js                # AI provider strategy pattern
+│   ├── assets/                  # App icons (icns, ico, png)
+│   ├── frontend-dist/           # Static frontend build (generated)
+│   └── package.json             # Electron + electron-builder config
+├── backend/                     # Python backend (Docker deployment)
 │   ├── app/
 │   │   ├── main.py              # FastAPI app, CORS, router registration
 │   │   ├── config.py            # Pydantic settings (from .env)
@@ -141,93 +183,91 @@ StepScribe/
 │   │   ├── models/
 │   │   │   └── models.py        # All SQLAlchemy models + faith traditions
 │   │   ├── routers/
-│   │   │   ├── journal.py       # CRUD entries + memory extraction on publish
-│   │   │   ├── ai.py            # Direct AI chat (legacy, still works)
-│   │   │   ├── conversations.py # Persistent conversations + memory extraction
-│   │   │   ├── memory.py        # AI memory CRUD
-│   │   │   ├── uploads.py       # File/photo upload + serving
-│   │   │   ├── mood.py          # Inner Weather CRUD
-│   │   │   ├── heroes.py        # Hero management + 24 defaults
-│   │   │   ├── faith.py         # Faith tradition management
-│   │   │   ├── onboarding.py    # Setup wizard (faith, heroes, about_me)
+│   │   │   ├── journal.py       # CRUD + memory extraction on publish
+│   │   │   ├── conversations.py # Persistent conversations + memory
+│   │   │   ├── memory.py        # AI memory CRUD + compaction
 │   │   │   ├── export.py        # PDF book + JSON export
+│   │   │   ├── ollama_manage.py # Ollama status, models, pull, create
+│   │   │   ├── mood.py          # Inner Weather CRUD
+│   │   │   ├── heroes.py        # Hero management + defaults
+│   │   │   ├── faith.py         # Faith tradition management
+│   │   │   ├── onboarding.py    # Setup wizard
+│   │   │   ├── uploads.py       # File/photo upload + serving
 │   │   │   ├── groups.py        # Group journals
-│   │   │   └── sync.py          # Import/export for backup
+│   │   │   ├── sync.py          # Import/export backup
+│   │   │   └── app_settings.py  # AI config management
 │   │   └── services/
 │   │       ├── ai_service.py    # AI provider strategy pattern
 │   │       ├── memory_service.py # Memory extraction + context builder
+│   │       ├── export_service.py # PDF book HTML builder
 │   │       └── sponsor_guidelines.py # System prompt + templates
 │   ├── Dockerfile
 │   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.tsx         # Main journal page (editor + AI chat + attachments)
-│   │   │   ├── sponsor/         # Standalone AI Sponsor chat
-│   │   │   ├── progress/        # One Day at a Time calendar
-│   │   │   ├── memory/          # AI Memory management
-│   │   │   ├── heroes/          # Hero management
-│   │   │   ├── faith/           # Faith tradition picker
-│   │   │   ├── weather/         # Inner Weather history
-│   │   │   ├── setup/           # Onboarding wizard
-│   │   │   ├── groups/          # Group journals
-│   │   │   ├── export/          # Export tools
-│   │   │   └── settings/        # Settings
-│   │   ├── components/          # Reusable components (Editor, Sidebar, etc.)
-│   │   └── lib/
-│   │       ├── api.ts           # API client for all endpoints
-│   │       ├── types.ts         # TypeScript interfaces
-│   │       └── storage.ts       # Offline storage utilities
-│   ├── Dockerfile
-│   └── package.json
+├── frontend/                    # Shared Next.js frontend
+│   ├── src/app/                 # App router pages
+│   ├── src/components/          # Reusable UI components
+│   └── src/lib/                 # API client, types, storage
 ├── docker-compose.yml
-├── .env.example
-└── data/                        # Persistent data (DB, exports, uploads)
+└── .env.example
 ```
 
 ---
 
 ## API Overview
 
-All endpoints are at `http://localhost:8100/api/`. FastAPI auto-generates docs at `/docs`.
+All endpoints follow the same REST structure in both deployment modes.
+Desktop: `http://localhost:19847/api/` | Docker: `http://localhost:8100/api/`
 
 | Endpoint | Description |
 |----------|-------------|
 | `GET/POST/PATCH/DELETE /journal/entries` | Journal CRUD |
 | `POST /conversations/send` | Send message to AI (persistent) |
+| `POST /conversations/send/stream` | Stream AI response |
 | `GET /conversations/` | List past conversations |
 | `GET/POST/DELETE/PATCH /memory/` | AI memory management |
+| `POST /memory/compact` | Trigger memory compaction |
 | `POST /uploads/` | Upload file/photo |
 | `GET /uploads/file/{filename}` | Serve uploaded file |
 | `GET/POST /mood/` | Mood tracking |
 | `GET/POST/DELETE/PATCH /heroes/` | Hero management |
 | `GET/PUT /faith/` | Faith tradition |
 | `POST /onboarding/complete` | Complete setup wizard |
-| `POST /export/journal-book` | Generate PDF book |
+| `POST /export/journal-book` | Generate Markdown/PDF book |
+| `GET /ollama/status` | Ollama health + installed detection |
+| `GET /ollama/models` | List local Ollama models |
+| `POST /ollama/pull` | Pull model with streaming progress |
+| `POST /ollama/validate-model` | Test a model responds correctly |
 | `GET /ai/templates` | Prompt templates |
+| `GET/PUT /settings/` | AI configuration management |
 
 ---
 
 ## How AI Memory Works
 
 1. **You journal or chat** — write entries, talk to the AI Sponsor
-2. **AI extracts insights** — after every conversation exchange and journal publish, the AI analyzes the text and extracts categorized memories (struggles, patterns, triggers, milestones, etc.)
+2. **AI extracts insights** — after every conversation exchange and journal publish, the AI analyzes the text and extracts categorized memories (struggles, patterns, triggers, milestones, etc.). Uses Ollama's `format: "json"` mode for reliable structured output.
 3. **Memories are stored** — each insight is saved to the `ai_memories` table with category, source, and active/inactive status
 4. **Context is built** — on every AI interaction, `get_memory_context()` gathers: your about_me, faith tradition, hero names, all active memories (grouped by category), and recent mood trend
 5. **AI knows you** — this full context is injected into the system prompt, so the AI speaks with genuine understanding of your situation
+6. **Auto-compaction** — when memories exceed 30, categories with 8+ entries are automatically merged into concise summaries to keep the context window focused
 
-You can view, toggle, and delete memories at any time on the AI Memory page.
+You can view, toggle, compact, and delete memories at any time on the AI Memory page.
 
 ---
 
 ## Data Persistence
 
-All data lives in the `data/` directory (mapped via Docker volumes):
+**Desktop app:** Data lives in your OS application data directory:
+- macOS: `~/Library/Application Support/stepscribe-desktop/data/`
+- Windows: `%APPDATA%/stepscribe-desktop/data/`
+- Linux: `~/.config/stepscribe-desktop/data/`
+
+**Docker:** Data lives in the `data/` directory (mapped via Docker volumes):
 - `data/db/stepscribe.db` — SQLite database
-- `data/exports/` — Generated PDF exports
+- `data/exports/` — Generated exports
 - `data/uploads/` — Uploaded photos and files
 
-To back up: copy the `data/` folder. To reset: delete `data/db/stepscribe.db` and restart.
+To back up: copy the data folder. To reset: delete the database file and restart.
 
 ---
 
@@ -249,8 +289,11 @@ See [.env.example](.env.example) for all available settings. Key options:
 
 ## Roadmap
 
-- [ ] **Multi-user support** — Individual user accounts with authentication for the web server version. Currently single-user (all data under "default" user).
-- [ ] **Group/sponsor sharing** — Share journal entries or progress with a sponsor or accountability group
+- [x] **Desktop app** — Native Electron app for macOS, Windows, Linux
+- [x] **AI Memory compaction** — Automatic and manual memory consolidation
+- [x] **Markdown book export** — Export your journal as a formatted Markdown book
+- [x] **Ollama detection** — Detects installed-but-not-running state with helpful guidance
+- [ ] **Multi-user support** — Individual user accounts with authentication
 - [ ] **Mobile-responsive PWA** — Installable progressive web app for phone use
 - [ ] **Backup/restore** — One-click database backup and restore from the UI
 

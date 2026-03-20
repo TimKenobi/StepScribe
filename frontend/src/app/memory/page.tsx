@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   Brain, ToggleLeft, ToggleRight, Trash2, Plus, Search,
-  ChevronDown, ChevronUp, Filter,
+  ChevronDown, ChevronUp, Filter, Zap,
 } from "lucide-react";
 import { memoryApi } from "@/lib/api";
 import type { AIMemory } from "@/lib/types";
@@ -31,6 +31,8 @@ export default function MemoryPage() {
   const [newCategory, setNewCategory] = useState("insight");
   const [newContent, setNewContent] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(CATEGORIES));
+  const [compacting, setCompacting] = useState(false);
+  const [compactMessage, setCompactMessage] = useState("");
 
   useEffect(() => {
     loadMemories();
@@ -81,6 +83,25 @@ export default function MemoryPage() {
       else next.add(cat);
       return next;
     });
+  };
+
+  const compactMemories = async () => {
+    setCompacting(true);
+    setCompactMessage("");
+    try {
+      const result = await memoryApi.compact("default", filterCategory || undefined);
+      if (result.status === "skip") {
+        setCompactMessage(result.message || "Not enough memories to compact.");
+      } else {
+        setCompactMessage(`Compacted ${result.before} memories → ${result.reduced > 0 ? result.after : result.before}${result.reduced > 0 ? ` (removed ${result.reduced} duplicates)` : " (no duplicates found)"}`);
+        loadMemories();
+      }
+    } catch {
+      setCompactMessage("Compaction failed — check your AI provider is configured.");
+    } finally {
+      setCompacting(false);
+      setTimeout(() => setCompactMessage(""), 5000);
+    }
   };
 
   // Filter and group
@@ -140,7 +161,31 @@ export default function MemoryPage() {
             {totalCount - activeCount} disabled
           </span>
         )}
+        <div className="flex-1" />
+        <button
+          onClick={compactMemories}
+          disabled={compacting || totalCount < 3}
+          className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-opacity"
+          style={{
+            backgroundColor: "var(--accent)",
+            color: "#fff",
+            opacity: compacting || totalCount < 3 ? 0.4 : 1,
+          }}
+          title="Use AI to merge duplicate and related memories into fewer, denser ones"
+        >
+          <Zap size={12} />
+          {compacting ? "Compacting..." : "Compact"}
+        </button>
       </div>
+
+      {compactMessage && (
+        <div
+          className="px-3 py-2 rounded-lg mb-4 text-xs"
+          style={{ backgroundColor: "var(--bg-tertiary)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+        >
+          {compactMessage}
+        </div>
+      )}
 
       {/* Search + filter bar */}
       <div className="flex gap-3 mb-6">

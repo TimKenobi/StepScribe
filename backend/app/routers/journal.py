@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -20,6 +20,7 @@ class EntryCreate(BaseModel):
     prompt_used: str | None = None
     is_draft: bool = True
     sections_included: dict | None = None
+    entry_date: str | None = None  # ISO date string "YYYY-MM-DD"
 
 
 class EntryUpdate(BaseModel):
@@ -28,6 +29,7 @@ class EntryUpdate(BaseModel):
     content_html: str | None = None
     is_draft: bool | None = None
     sections_included: dict | None = None
+    entry_date: str | None = None
 
 
 class EntryOut(BaseModel):
@@ -39,6 +41,7 @@ class EntryOut(BaseModel):
     prompt_used: str | None
     is_draft: bool
     sections_included: dict | None
+    entry_date: date | None
     created_at: datetime
     updated_at: datetime
 
@@ -47,7 +50,14 @@ class EntryOut(BaseModel):
 
 @router.post("/entries", response_model=EntryOut)
 async def create_entry(data: EntryCreate, db: AsyncSession = Depends(get_db)):
-    entry = JournalEntry(**data.model_dump())
+    entry_data = data.model_dump()
+    # Parse entry_date string to date object
+    if entry_data.get("entry_date"):
+        try:
+            entry_data["entry_date"] = date.fromisoformat(entry_data["entry_date"])
+        except (ValueError, TypeError):
+            entry_data["entry_date"] = None
+    entry = JournalEntry(**entry_data)
     db.add(entry)
     await db.commit()
     await db.refresh(entry)
@@ -87,6 +97,12 @@ async def update_entry(entry_id: str, data: EntryUpdate, db: AsyncSession = Depe
         raise HTTPException(status_code=404, detail="Entry not found")
     was_draft = entry.is_draft
     update_data = data.model_dump(exclude_unset=True)
+    # Parse entry_date string to date object
+    if "entry_date" in update_data and update_data["entry_date"]:
+        try:
+            update_data["entry_date"] = date.fromisoformat(update_data["entry_date"])
+        except (ValueError, TypeError):
+            del update_data["entry_date"]
     for key, value in update_data.items():
         setattr(entry, key, value)
     entry.updated_at = datetime.utcnow()

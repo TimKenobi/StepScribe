@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -18,13 +19,24 @@ import {
   Redo,
 } from "lucide-react";
 
+export interface EditorHandle {
+  insertContent: (html: string) => void;
+  getHTML: () => string;
+}
+
 interface EditorProps {
   content?: string;
   onChange?: (html: string, text: string) => void;
   placeholder?: string;
 }
 
-export default function Editor({ content = "", onChange, placeholder = "Start writing..." }: EditorProps) {
+const EditorComponent = forwardRef<EditorHandle, EditorProps>(function EditorComponent(
+  { content = "", onChange, placeholder = "Start writing..." },
+  ref
+) {
+  const isExternalUpdate = useRef(false);
+  const skipNextSync = useRef(false);
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -34,7 +46,9 @@ export default function Editor({ content = "", onChange, placeholder = "Start wr
     ],
     content,
     onUpdate: ({ editor }) => {
-      onChange?.(editor.getHTML(), editor.getText());
+      if (!isExternalUpdate.current) {
+        onChange?.(editor.getHTML(), editor.getText());
+      }
     },
     editorProps: {
       attributes: {
@@ -42,6 +56,36 @@ export default function Editor({ content = "", onChange, placeholder = "Start wr
       },
     },
   });
+
+  // Sync editor content when the content prop changes externally (e.g. selecting a different entry)
+  useEffect(() => {
+    if (editor && content !== undefined) {
+      // Skip sync if we just did an imperative insert (the parent's setHtml is catching up)
+      if (skipNextSync.current) {
+        skipNextSync.current = false;
+        return;
+      }
+      const currentHtml = editor.getHTML();
+      // Only update if content actually differs (avoid cursor reset on own edits)
+      if (currentHtml !== content) {
+        isExternalUpdate.current = true;
+        editor.commands.setContent(content || "", { emitUpdate: false });
+        isExternalUpdate.current = false;
+      }
+    }
+  }, [editor, content]);
+
+  // Expose imperative methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    insertContent: (html: string) => {
+      if (editor) {
+        // Mark that we're doing an imperative insert so the sync useEffect skips the next content change
+        skipNextSync.current = true;
+        editor.chain().focus().insertContent(html, { parseOptions: { preserveWhitespace: false } }).run();
+      }
+    },
+    getHTML: () => editor?.getHTML() ?? "",
+  }), [editor]);
 
   if (!editor) return null;
 
@@ -146,4 +190,6 @@ export default function Editor({ content = "", onChange, placeholder = "Start wr
       <EditorContent editor={editor} />
     </div>
   );
-}
+});
+
+export default EditorComponent;

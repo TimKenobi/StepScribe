@@ -36,7 +36,12 @@ export default function OneDayAtATime({
   }, [month]);
 
   const journaledSet = useMemo(
-    () => new Set(journaledDates.map((d) => format(new Date(d), "yyyy-MM-dd"))),
+    () => new Set(journaledDates.map((d) => {
+      // entry_date is already "YYYY-MM-DD", created_at needs UTC parsing
+      if (d.length === 10) return d; // Already a date string
+      const s = d.endsWith("Z") ? d : d + "Z";
+      return format(new Date(s), "yyyy-MM-dd");
+    })),
     [journaledDates]
   );
 

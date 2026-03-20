@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, Save, Trash2, BookOpen, MessageCircle, X,
   ChevronDown, ChevronUp, Send, Sparkles, Eye, EyeOff, Paperclip, Image,
+  ClipboardCopy,
 } from "lucide-react";
-import Editor from "@/components/Editor";
+import Editor, { EditorHandle } from "@/components/Editor";
 import MoodWeather from "@/components/MoodWeather";
 import VoiceInput from "@/components/VoiceInput";
 import HeroQuotes from "@/components/HeroQuotes";
@@ -43,10 +44,12 @@ interface AttachmentItem {
 
 export default function JournalPage() {
   const router = useRouter();
+  const editorRef = useRef<EditorHandle>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [activeEntry, setActiveEntry] = useState<Entry | null>(null);
   const [title, setTitle] = useState("");
   const [html, setHtml] = useState("");
+  const [entryDate, setEntryDate] = useState("");
   const [selectedMood, setSelectedMood] = useState("");
   const [energy, setEnergy] = useState(5);
   const [saving, setSaving] = useState(false);
@@ -65,6 +68,7 @@ export default function JournalPage() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [templates, setTemplates] = useState<Record<string, any>>({});
   const [showTemplates, setShowTemplates] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Mood section expanded
   const [showMood, setShowMood] = useState(false);
@@ -72,6 +76,11 @@ export default function JournalPage() {
   // Attachments
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [uploading, setUploading] = useState(false);
+
+  // Auto-scroll chat to bottom when messages change
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, chatLoading]);
 
   useEffect(() => {
     // Check onboarding — redirect to setup if not complete
@@ -81,17 +90,30 @@ export default function JournalPage() {
         return;
       }
     }).catch(() => {});
-    loadEntries();
+    loadEntries().then((loadedEntries) => {
+      // Handle deep-link from progress page: /?entry=<id>
+      const params = new URLSearchParams(window.location.search);
+      const entryId = params.get("entry");
+      if (entryId && loadedEntries) {
+        const target = loadedEntries.find((e: Entry) => e.id === entryId);
+        if (target) selectEntry(target);
+      }
+    });
     checkOnline().then(setOnline);
     conversationApi.templates().then(setTemplates).catch(() => {});
   }, [router]);
 
   const loadEntries = async () => {
-    try { setEntries(await journalApi.list()); } catch {}
+    try {
+      const list = await journalApi.list();
+      setEntries(list);
+      return list;
+    } catch { return []; }
   };
 
   const newEntry = () => {
     setActiveEntry(null); setTitle(""); setHtml("");
+    setEntryDate(new Date().toISOString().slice(0, 10));
     setSelectedMood(""); setEnergy(5);
     setChatMessages([]); setConversationId(null); setShowChat(false);
     setSections({ mood: true, conversation: true, heroes: true });
@@ -101,6 +123,7 @@ export default function JournalPage() {
   const selectEntry = async (entry: Entry) => {
     setActiveEntry(entry); setTitle(entry.title);
     setHtml(entry.content_html || entry.content);
+    setEntryDate((entry as any).entry_date || entry.created_at.slice(0, 10));
     if (entry.sections_included) setSections(entry.sections_included);
     // Load conversations
     try {
@@ -118,6 +141,16 @@ export default function JournalPage() {
       const atts = await uploadsApi.list("default", entry.id);
       setAttachments(atts);
     } catch { setAttachments([]); }
+    // Load linked mood / energy
+    try {
+      const mood = await moodApi.getByEntry(entry.id);
+      if (mood) {
+        setSelectedMood(mood.weather);
+        setEnergy(mood.energy_level);
+      } else {
+        setSelectedMood(""); setEnergy(5);
+      }
+    } catch { setSelectedMood(""); setEnergy(5); }
   };
 
   const saveEntry = useCallback(async (publish = false) => {
@@ -126,27 +159,38 @@ export default function JournalPage() {
       const data: any = {
         title, content: html.replace(/<[^>]+>/g, ""), content_html: html,
         is_draft: !publish, sections_included: sections,
+        entry_date: entryDate || undefined,
       };
       if (!online) { saveOfflineEntry({ ...data, is_draft: !publish }); setSaving(false); return; }
+
+      let savedEntry: Entry;
       if (activeEntry) {
-        setActiveEntry(await journalApi.update(activeEntry.id, data));
+        savedEntry = await journalApi.update(activeEntry.id, data);
       } else {
-        setActiveEntry(await journalApi.create({ ...data, user_id: "default" }));
+        savedEntry = await journalApi.create({ ...data, user_id: "default" });
       }
+      setActiveEntry(savedEntry);
+
+      // Use the saved entry's ID (not stale activeEntry) for mood
       if (selectedMood) {
-        await moodApi.create({ user_id: "default", weather: selectedMood, energy_level: energy, entry_id: activeEntry?.id });
+        await moodApi.create({ user_id: "default", weather: selectedMood, energy_level: energy, entry_id: savedEntry.id });
       }
       loadEntries();
     } catch {}
     setSaving(false);
-  }, [title, html, activeEntry, selectedMood, energy, online, sections]);
+  }, [title, html, activeEntry, selectedMood, energy, online, sections, entryDate]);
 
   const deleteEntry = async () => {
     if (!activeEntry) return;
     try { await journalApi.delete(activeEntry.id); newEntry(); loadEntries(); } catch {}
   };
 
-  const handleVoiceResult = (text: string) => setHtml((prev) => prev + `<p>${text}</p>`);
+  const handleVoiceResult = (text: string) => {
+    if (editorRef.current) {
+      editorRef.current.insertContent(`<p>${text}</p>`);
+      setHtml(editorRef.current.getHTML());
+    }
+  };
 
   const sendChat = async (text: string, templateKey?: string) => {
     if (!text.trim() && !templateKey) return;
@@ -174,7 +218,26 @@ export default function JournalPage() {
     setShowChat(false);
   };
 
-  const insertToEditor = (text: string) => setHtml((prev) => prev + `<blockquote><p>${text}</p></blockquote>`);
+  const insertToEditor = (text: string) => {
+    if (editorRef.current) {
+      editorRef.current.insertContent(`<blockquote><p>${text}</p></blockquote>`);
+      // Also update html state to stay in sync
+      const newHtml = editorRef.current.getHTML();
+      setHtml(newHtml);
+    }
+  };
+
+  const insertConversation = () => {
+    if (!chatMessages.length || !editorRef.current) return;
+    const html = chatMessages.map((msg) => {
+      if (msg.role === "user") {
+        return `<p><strong>Me:</strong> ${msg.content}</p>`;
+      }
+      return `<blockquote><p>${msg.content}</p></blockquote>`;
+    }).join("");
+    editorRef.current.insertContent(`<hr>${html}<hr>`);
+    setHtml(editorRef.current.getHTML());
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -185,9 +248,10 @@ export default function JournalPage() {
         const result = await uploadsApi.upload(file, "default", activeEntry?.id);
         setAttachments((prev) => [...prev, result]);
         // If it's an image, insert into editor
-        if (file.type.startsWith("image/")) {
+        if (file.type.startsWith("image/") && editorRef.current) {
           const imgUrl = uploadsApi.fileUrl(result.filename);
-          setHtml((prev) => prev + `<p><img src="${imgUrl}" alt="${result.original_name}" style="max-width:100%;border-radius:8px;margin:8px 0" /></p>`);
+          editorRef.current.insertContent(`<p><img src="${imgUrl}" alt="${result.original_name}" style="max-width:100%;border-radius:8px;margin:8px 0" /></p>`);
+          setHtml(editorRef.current.getHTML());
         }
       } catch {}
     }
@@ -207,7 +271,7 @@ export default function JournalPage() {
   const wordCount = html.replace(/<[^>]+>/g, "").split(/\s+/).filter(Boolean).length;
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-full">
       {/* Entry list sidebar */}
       <div className="w-64 border-r flex flex-col" style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}>
         <div className="p-3 border-b flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
@@ -240,10 +304,18 @@ export default function JournalPage() {
             {sections.heroes && <HeroQuotes refreshInterval={120000} />}
 
             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
-              placeholder="Entry title..." className="w-full text-xl font-semibold mb-4 mt-4 bg-transparent outline-none"
+              placeholder="Entry title..." className="w-full text-xl font-semibold mb-2 mt-4 bg-transparent outline-none"
               style={{ color: "var(--text-primary)" }} />
 
-            <Editor content={html} onChange={(h) => setHtml(h)} />
+            {/* Entry date picker — backdate or forward-date entries */}
+            <div className="flex items-center gap-2 mb-4">
+              <label className="text-xs" style={{ color: "var(--text-muted)" }}>Date:</label>
+              <input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)}
+                className="px-2 py-1 rounded text-xs outline-none"
+                style={{ backgroundColor: "var(--bg-tertiary)", color: "var(--text-secondary)", border: "1px solid var(--border)" }} />
+            </div>
+
+            <Editor ref={editorRef} content={html} onChange={(h) => setHtml(h)} />
 
             {/* Section toggles */}
             <div className="mt-4 flex items-center gap-3 flex-wrap">
@@ -329,6 +401,12 @@ export default function JournalPage() {
             <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: "var(--border)" }}>
               <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>AI Sponsor</span>
               <div className="flex items-center gap-2">
+                {chatMessages.length > 0 && (
+                  <button onClick={insertConversation} className="text-xs px-2 py-1 rounded flex items-center gap-1"
+                    style={{ color: "var(--accent)", backgroundColor: "var(--bg-tertiary)" }} title="Add full conversation to journal">
+                    <ClipboardCopy size={12} /> Add all to journal
+                  </button>
+                )}
                 {conversationId && <button onClick={endConversation} className="text-xs px-2 py-1 rounded" style={{ color: "var(--text-muted)" }}>End conversation</button>}
                 <button onClick={() => setShowChat(false)}><X size={14} style={{ color: "var(--text-muted)" }} /></button>
               </div>
@@ -370,6 +448,7 @@ export default function JournalPage() {
                   </div>
                 </div>
               )}
+              <div ref={chatEndRef} />
             </div>
             <div className="p-3 border-t" style={{ borderColor: "var(--border)" }}>
               <div className="flex gap-2">
