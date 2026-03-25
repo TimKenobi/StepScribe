@@ -1,11 +1,14 @@
 /**
- * Database layer — better-sqlite3 for synchronous SQLite access.
- * Single-user desktop app: no connection pooling needed.
+ * Database layer — Embedded PostgreSQL via PGlite (WASM).
+ * No external database server needed. Data stored in app's user data directory.
+ * Pure JavaScript/WASM: no native C++ modules, works on all platforms.
  */
-const path = require("path");
+const { PGlite } = require("@electric-sql/pglite");
 const crypto = require("crypto");
+const path = require("path");
+const fs = require("fs");
 
-let _db = null;
+let db = null;
 
 function uuid() {
   return crypto.randomUUID();
@@ -15,31 +18,51 @@ function now() {
   return new Date().toISOString();
 }
 
-function init(dataDir) {
-  const Database = require("better-sqlite3");
-  const dbPath = path.join(dataDir, "stepscribe.db");
-  _db = new Database(dbPath);
-  _db.pragma("journal_mode = WAL");
-  _db.pragma("foreign_keys = ON");
-  createTables();
-  return _db;
+async function init(dataDir) {
+  const dbPath = path.join(dataDir, "pgdata");
+  fs.mkdirSync(dbPath, { recursive: true });
+
+  db = new PGlite(dbPath);
+  await db.query("SELECT 1");
+  console.log(`[StepScribe] Embedded PostgreSQL ready: ${dbPath}`);
+
+  await createTables();
+  return db;
 }
 
-function db() {
-  if (!_db) throw new Error("Database not initialized. Call init(dataDir) first.");
-  return _db;
+/** Run a query and return the full result */
+async function run(sql, params = []) {
+  return db.query(sql, params);
 }
 
-function createTables() {
-  const d = db();
+/** Run a query and return the first row or null */
+async function getOne(sql, params = []) {
+  const { rows } = await db.query(sql, params);
+  return rows[0] || null;
+}
 
-  d.exec(`
+/** Run a query and return all rows */
+async function getAll(sql, params = []) {
+  const { rows } = await db.query(sql, params);
+  return rows;
+}
+
+/** Get a pseudo-client for transactions (BEGIN/COMMIT/ROLLBACK via query) */
+async function getClient() {
+  return {
+    query: async (sql, params) => db.query(sql, params),
+    release: () => {},
+  };
+}
+
+async function createTables() {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab',abs(random()) % 4 + 1,1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6)))),
+      id TEXT PRIMARY KEY,
       username TEXT UNIQUE,
       password_hash TEXT DEFAULT '',
       display_name TEXT DEFAULT '',
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS user_preferences (
@@ -48,9 +71,9 @@ function createTables() {
       faith_tradition TEXT DEFAULT '',
       faith_notes TEXT DEFAULT '',
       about_me TEXT DEFAULT '',
-      onboarding_complete INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      onboarding_complete BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS journal_entries (
@@ -60,11 +83,11 @@ function createTables() {
       content TEXT DEFAULT '',
       content_html TEXT DEFAULT '',
       prompt_used TEXT,
-      is_draft INTEGER DEFAULT 1,
+      is_draft BOOLEAN DEFAULT TRUE,
       sections_included TEXT,
       entry_date TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS mood_entries (
@@ -74,7 +97,7 @@ function createTables() {
       weather TEXT NOT NULL,
       note TEXT DEFAULT '',
       energy_level INTEGER DEFAULT 5,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS user_heroes (
@@ -82,7 +105,7 @@ function createTables() {
       user_id TEXT REFERENCES users(id),
       name TEXT NOT NULL,
       description TEXT DEFAULT '',
-      is_active INTEGER DEFAULT 1,
+      is_active BOOLEAN DEFAULT TRUE,
       sort_order INTEGER DEFAULT 0
     );
 
@@ -92,7 +115,7 @@ function createTables() {
       description TEXT DEFAULT '',
       created_by TEXT REFERENCES users(id),
       invite_code TEXT UNIQUE,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS group_members (
@@ -100,7 +123,7 @@ function createTables() {
       group_id TEXT REFERENCES group_journals(id),
       user_id TEXT REFERENCES users(id),
       role TEXT DEFAULT 'member',
-      joined_at TEXT DEFAULT (datetime('now'))
+      joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS shared_entries (
@@ -108,7 +131,7 @@ function createTables() {
       entry_id TEXT REFERENCES journal_entries(id),
       group_id TEXT REFERENCES group_journals(id),
       shared_by TEXT REFERENCES users(id),
-      shared_at TEXT DEFAULT (datetime('now'))
+      shared_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS attachments (
@@ -120,7 +143,7 @@ function createTables() {
       content_type TEXT NOT NULL,
       size_bytes INTEGER NOT NULL,
       caption TEXT DEFAULT '',
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS ai_memories (
@@ -130,9 +153,9 @@ function createTables() {
       content TEXT NOT NULL,
       source TEXT DEFAULT 'conversation',
       source_id TEXT,
-      is_active INTEGER DEFAULT 1,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS conversations (
@@ -140,9 +163,9 @@ function createTables() {
       user_id TEXT REFERENCES users(id),
       entry_id TEXT REFERENCES journal_entries(id),
       messages TEXT DEFAULT '[]',
-      is_active INTEGER DEFAULT 1,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS app_config (
@@ -160,17 +183,20 @@ function createTables() {
       custom_ai_base_url TEXT DEFAULT '',
       custom_ai_api_key TEXT DEFAULT '',
       custom_ai_model TEXT DEFAULT '',
-      updated_at TEXT DEFAULT (datetime('now'))
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
   `);
 
   // Ensure default user exists
-  const existing = d.prepare("SELECT id FROM users WHERE id = ?").get("default");
+  const existing = await getOne("SELECT id FROM users WHERE id = $1", ["default"]);
   if (!existing) {
-    d.prepare("INSERT INTO users (id, username, display_name) VALUES (?, ?, ?)").run("default", "default", "You");
+    await run(
+      "INSERT INTO users (id, username, display_name) VALUES ($1, $2, $3)",
+      ["default", "default", "You"]
+    );
   }
 
-  // Run migrations for columns that may be missing
+  // Run migrations for columns that may be missing (IF NOT EXISTS requires PostgreSQL 9.6+)
   const migrations = [
     ["user_preferences", "about_me", "TEXT DEFAULT ''"],
     ["journal_entries", "sections_included", "TEXT"],
@@ -178,11 +204,29 @@ function createTables() {
   ];
   for (const [table, column, colType] of migrations) {
     try {
-      d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${colType}`);
+      await run(
+        `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${colType}`
+      );
     } catch {
-      // Column already exists
+      /* column already exists */
     }
   }
 }
 
-module.exports = { init, db, uuid, now };
+async function close() {
+  if (db) {
+    await db.close();
+    db = null;
+  }
+}
+
+module.exports = {
+  init,
+  run,
+  getOne,
+  getAll,
+  getClient,
+  uuid,
+  now,
+  close,
+};

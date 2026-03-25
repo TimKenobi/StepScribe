@@ -60,14 +60,14 @@ async function startServer() {
     fs.mkdirSync(d, { recursive: true });
   }
 
-  // Initialize database
+  // Initialize database (PostgreSQL — async)
   const database = require("./server/db");
-  database.init(DATA_DIR);
+  await database.init(DATA_DIR);
 
   // Load saved AI settings from database
   const aiModule = require("./server/ai");
   try {
-    const config = database.db().prepare("SELECT * FROM app_config WHERE id = 'default'").get();
+    const config = await database.getOne("SELECT * FROM app_config WHERE id = 'default'");
     if (config) {
       const fields = [
         "ai_provider", "openai_api_key", "openai_model",
@@ -95,11 +95,11 @@ async function startServer() {
             const chatModel = installed.find(m => !m.includes("embed") && !m.includes("nomic")) || installed[0];
             console.log(`[StepScribe] Ollama model "${currentModel}" not found. Auto-switching to "${chatModel}". Available: ${installed.join(", ")}`);
             aiModule.updateSettings({ ollama_model: chatModel });
-            database.db().prepare("UPDATE app_config SET ollama_model = ? WHERE id = 'default'").run(chatModel);
+            await database.run("UPDATE app_config SET ollama_model = $1 WHERE id = 'default'", [chatModel]);
           } else if (match && match !== currentModel) {
             // Fix casing: use the exact name Ollama reports
             aiModule.updateSettings({ ollama_model: match });
-            database.db().prepare("UPDATE app_config SET ollama_model = ? WHERE id = 'default'").run(match);
+            await database.run("UPDATE app_config SET ollama_model = $1 WHERE id = 'default'", [match]);
             console.log(`[StepScribe] Fixed Ollama model name casing: "${currentModel}" → "${match}"`);
           }
         } catch (e) {
@@ -140,6 +140,11 @@ function stopServer() {
     server.close();
     server = null;
   }
+  // Close PostgreSQL connection pool
+  try {
+    const database = require("./server/db");
+    database.close();
+  } catch {}
 }
 
 /* ── Windows ── */

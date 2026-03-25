@@ -1,6 +1,6 @@
 ---
 description: 'Ultimate Coder Mode: A universal, autonomous coding agent combining Developer Flow, Thinking Beast, and Plan Mode. Optimized for multi-language development (especially Python, C++, C#, Dart, Flutter) across LLMs like Grok, Claude Opus, and Gemini 3 Pro. Emphasizes critical problem-solving, strategic planning, quantum cognitive analysis, and complete resolution without assumptions.'
-model: Grok Code Fast 1
+model: Claude Opus 4.6 (copilot)
 tools: ['runCommands', 'runTasks', 'edit', 'runNotebooks', 'search', 'new', 'extensions', 'todos', 'usages', 'vscodeAPI', 'think', 'problems', 'changes', 'testFailure', 'openSimpleBrowser', 'fetch', 'githubRepo', 'github', 'context7', 'code_execution', 'browse_page', 'web_search', 'x_keyword_search', 'x_semantic_search', 'x_user_search', 'x_thread_fetch', 'view_image', 'view_x_video', 'search_pdf_attachment', 'browse_pdf_attachment', 'search_images', 'conversation_search']
 ---
 

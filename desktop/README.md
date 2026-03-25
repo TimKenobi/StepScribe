@@ -7,17 +7,19 @@ Native Electron desktop app for StepScribe — a self-contained recovery journal
 The desktop app bundles everything into a single package:
 - **Electron 33** — Native window, system tray, macOS titlebar
 - **Express.js** — Full REST API running inside Node.js on port 19847
-- **better-sqlite3** — Embedded SQLite database
+- **PGlite** (embedded PostgreSQL via WASM) — Full PostgreSQL running inside the app, no external database needed
 - **Next.js static export** — Frontend served from the same origin
 
-Data is stored in the OS application data directory:
-- macOS: `~/Library/Application Support/stepscribe-desktop/data/`
-- Windows: `%APPDATA%/stepscribe-desktop/data/`
-- Linux: `~/.config/stepscribe-desktop/data/`
+Data is stored in an embedded PostgreSQL database inside the app's data directory:
+- macOS: `~/Library/Application Support/stepscribe-desktop/data/pgdata/`
+- Windows: `%APPDATA%/stepscribe-desktop/data/pgdata/`
+- Linux: `~/.config/stepscribe-desktop/data/pgdata/`
 
 ## Prerequisites
 
 - **Node.js 18+** — [download here](https://nodejs.org/)
+
+No external database installation required — PostgreSQL is embedded via PGlite (WASM).
 
 ## Setup
 
@@ -72,7 +74,7 @@ Icons are in `desktop/assets/`:
 ## How It Works
 
 1. The Electron app starts and launches the Express.js API server on port 19847
-2. The server initializes the SQLite database (creating tables if needed)
+2. The server connects to PostgreSQL (auto-creates the database if needed)
 3. The static frontend is served from the `frontend-dist/` directory on the same origin
 4. The main window loads `http://localhost:19847`
 5. A system tray icon provides quick access and quit option

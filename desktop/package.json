@@ -22,11 +22,11 @@
     "icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "@electric-sql/pglite": "^0.4.2",
     "express": "^4.21.0",
-    "better-sqlite3": "^11.7.0",
     "multer": "^1.4.5-lts.1",
-    "openai": "^4.77.0",
-    "@anthropic-ai/sdk": "^0.36.0"
+    "openai": "^4.77.0"
   },
   "devDependencies": {
     "@electron/notarize": "^2.5.0",
@@ -62,9 +62,7 @@
         "to": "frontend-dist"
       }
     ],
-    "asarUnpack": [
-      "**/node_modules/better-sqlite3/**"
-    ],
+    "asarUnpack": [],
     "mac": {
       "category": "public.app-category.lifestyle",
       "icon": "assets/icon.icns",
@@ -72,7 +70,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64", "x64"]
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         }
       ],
       "darkModeSupport": true,
@@ -88,8 +89,16 @@
       "sign": false,
       "title": "StepScribe",
       "contents": [
-        { "x": 130, "y": 220 },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     },
     "win": {
@@ -97,7 +106,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
@@ -111,7 +122,10 @@
     },
     "linux": {
       "icon": "assets/icon.png",
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Utility"
     }
   }

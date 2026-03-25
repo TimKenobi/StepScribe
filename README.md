@@ -90,11 +90,11 @@ A native desktop application with everything bundled — no Docker required.
 |-------|-----------|
 | **Shell** | Electron 33 |
 | **Frontend** | Next.js 16, React 19, TypeScript 5, Tailwind CSS v4 |
-| **Backend** | Express.js (Node.js), better-sqlite3 |
+| **Backend** | Express.js (Node.js), PGlite (embedded PostgreSQL via WASM) |
 | **AI** | Strategy pattern — OpenAI, Anthropic, Grok/xAI, Ollama, Custom |
 | **Editor** | TipTap rich text editor |
 
-The Express server runs inside Electron's Node.js process on port 19847. The frontend is a static export served from the same origin. Data is stored in `~/Library/Application Support/stepscribe-desktop/` (macOS) or equivalent OS paths.
+The Express server runs inside Electron's Node.js process on port 19847. The frontend is a static export served from the same origin. Data is stored in an embedded PostgreSQL database via PGlite (WASM) — no external database installation needed.
 
 ### 2. Docker (Self-Hosted)
 A containerized deployment with Python backend.
@@ -103,7 +103,7 @@ A containerized deployment with Python backend.
 |-------|-----------|
 | **Frontend** | Next.js 16, React 19, TypeScript 5, Tailwind CSS v4 |
 | **Backend** | Python 3.12, FastAPI 0.115, SQLAlchemy 2.0 (async) |
-| **Database** | SQLite with aiosqlite (async driver) |
+| **Database** | PostgreSQL 17 with asyncpg (async driver) |
 | **AI** | Strategy pattern — OpenAI, Anthropic, Grok/xAI, Ollama, Custom |
 | **Editor** | TipTap rich text editor |
 | **PDF** | WeasyPrint |
@@ -257,17 +257,19 @@ You can view, toggle, compact, and delete memories at any time on the AI Memory 
 
 ## Data Persistence
 
-**Desktop app:** Data lives in your OS application data directory:
-- macOS: `~/Library/Application Support/stepscribe-desktop/data/`
-- Windows: `%APPDATA%/stepscribe-desktop/data/`
-- Linux: `~/.config/stepscribe-desktop/data/`
+**Desktop app:** Data is stored in an embedded PostgreSQL database (via PGlite WASM) in the app's data directory:
+- macOS: `~/Library/Application Support/stepscribe-desktop/data/pgdata/`
+- Windows: `%APPDATA%/stepscribe-desktop/data/pgdata/`
+- Linux: `~/.config/stepscribe-desktop/data/pgdata/`
 
-**Docker:** Data lives in the `data/` directory (mapped via Docker volumes):
-- `data/db/stepscribe.db` — SQLite database
+No external database installation required.
+
+**Docker:** PostgreSQL runs as a container with a persistent volume:
+- PostgreSQL data is in the `stepscribe-pgdata` Docker volume
 - `data/exports/` — Generated exports
 - `data/uploads/` — Uploaded photos and files
 
-To back up: copy the data folder. To reset: delete the database file and restart.
+To back up: Docker uses `pg_dump stepscribe > backup.sql`. To reset: drop and recreate the database.
 
 ---
 

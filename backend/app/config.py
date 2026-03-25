@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     app_debug: bool = False
 
     # Database
-    database_url: str = "sqlite+aiosqlite:///data/stepscribe.db"
+    database_url: str = "postgresql+asyncpg://stepscribe:stepscribe@db:5432/stepscribe"
 
     # Paths
     data_dir: str = "/app/data"

@@ -1,4 +1,22 @@
 services:
+  db:
+    image: postgres:17-alpine
+    container_name: stepscribe-db
+    environment:
+      POSTGRES_USER: stepscribe
+      POSTGRES_PASSWORD: stepscribe
+      POSTGRES_DB: stepscribe
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - stepscribe-pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stepscribe"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -8,10 +26,12 @@ services:
     ports:
       - "${BACKEND_PORT:-8100}:8000"
     volumes:
-      # Persistent data — mapped to local folders so nothing is lost
-      - ./data/db:/app/data
+      # Persistent data for uploads and exports
       - ./data/exports:/app/data/exports
       - ./data/uploads:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -55,7 +75,7 @@ services:
           memory: 4G
 
 volumes:
-  stepscribe-data:
+  stepscribe-pgdata:
     driver: local
   ollama-data:
     driver: local

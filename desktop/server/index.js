@@ -1,12 +1,13 @@
 /**
  * Express API server — complete port of the FastAPI backend to Node.js.
  * Runs inside Electron's process. No Docker, no Python.
+ * Uses embedded PostgreSQL via PGlite (WASM) — all queries are async.
  */
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
-const { db, uuid, now } = require("./db");
+const { getOne, getAll, run, getClient, uuid, now } = require("./db");
 const ai = require("./ai");
 const { getSystemPrompt, getSystemPromptWithHeroes, getTemplate, getAllTemplates } = require("./sponsor");
 const {
@@ -22,6 +23,11 @@ const ALLOWED_TYPES = new Set([
   "application/pdf", "text/plain", "text/markdown",
 ]);
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+/** Wrap async route handlers so Express catches errors */
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
 
 function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
   const app = express();
@@ -65,46 +71,48 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
   // ══════════════════════════════════════
   // Journal Entries
   // ══════════════════════════════════════
-  app.post("/api/journal/entries", (req, res) => {
+  app.post("/api/journal/entries", asyncHandler(async (req, res) => {
     const { user_id = "default", title = "", content = "", content_html = "", prompt_used = null, is_draft = true, sections_included = null, entry_date = null } = req.body;
     const id = uuid();
     const ts = now();
-    db().prepare(`INSERT INTO journal_entries (id, user_id, title, content, content_html, prompt_used, is_draft, sections_included, entry_date, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, user_id, title, content, content_html, prompt_used, is_draft ? 1 : 0, sections_included ? JSON.stringify(sections_included) : null, entry_date || null, ts, ts);
-    const entry = db().prepare("SELECT * FROM journal_entries WHERE id = ?").get(id);
+    await run(`INSERT INTO journal_entries (id, user_id, title, content, content_html, prompt_used, is_draft, sections_included, entry_date, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [id, user_id, title, content, content_html, prompt_used, !!is_draft, sections_included ? JSON.stringify(sections_included) : null, entry_date || null, ts, ts]);
+    const entry = await getOne("SELECT * FROM journal_entries WHERE id = $1", [id]);
     res.json(formatEntry(entry));
-  });
+  }));
 
-  app.get("/api/journal/entries", (req, res) => {
+  app.get("/api/journal/entries", asyncHandler(async (req, res) => {
     const { user_id = "default", limit = "50", offset = "0" } = req.query;
-    const entries = db().prepare("SELECT * FROM journal_entries WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?")
-      .all(user_id, parseInt(limit), parseInt(offset));
+    const entries = await getAll("SELECT * FROM journal_entries WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+      [user_id, parseInt(limit), parseInt(offset)]);
     res.json(entries.map(formatEntry));
-  });
+  }));
 
-  app.get("/api/journal/entries/:id", (req, res) => {
-    const entry = db().prepare("SELECT * FROM journal_entries WHERE id = ?").get(req.params.id);
+  app.get("/api/journal/entries/:id", asyncHandler(async (req, res) => {
+    const entry = await getOne("SELECT * FROM journal_entries WHERE id = $1", [req.params.id]);
     if (!entry) return res.status(404).json({ detail: "Entry not found" });
     res.json(formatEntry(entry));
-  });
+  }));
 
-  app.patch("/api/journal/entries/:id", (req, res) => {
-    const entry = db().prepare("SELECT * FROM journal_entries WHERE id = ?").get(req.params.id);
+  app.patch("/api/journal/entries/:id", asyncHandler(async (req, res) => {
+    const entry = await getOne("SELECT * FROM journal_entries WHERE id = $1", [req.params.id]);
     if (!entry) return res.status(404).json({ detail: "Entry not found" });
     const wasDraft = entry.is_draft;
     const updates = req.body;
     const fields = [];
     const values = [];
+    let paramIdx = 1;
     for (const [k, v] of Object.entries(updates)) {
-      if (k === "sections_included") { fields.push(`${k} = ?`); values.push(v ? JSON.stringify(v) : null); }
-      else if (k === "is_draft") { fields.push(`${k} = ?`); values.push(v ? 1 : 0); }
-      else if (["title", "content", "content_html", "entry_date"].includes(k)) { fields.push(`${k} = ?`); values.push(v); }
+      if (k === "sections_included") { fields.push(`${k} = $${paramIdx++}`); values.push(v ? JSON.stringify(v) : null); }
+      else if (k === "is_draft") { fields.push(`${k} = $${paramIdx++}`); values.push(!!v); }
+      else if (["title", "content", "content_html", "entry_date"].includes(k)) { fields.push(`${k} = $${paramIdx++}`); values.push(v); }
     }
-    fields.push("updated_at = ?");
+    fields.push(`updated_at = $${paramIdx++}`);
     values.push(now());
     values.push(req.params.id);
-    db().prepare(`UPDATE journal_entries SET ${fields.join(", ")} WHERE id = ?`).run(...values);
-    const updated = db().prepare("SELECT * FROM journal_entries WHERE id = ?").get(req.params.id);
+    await run(`UPDATE journal_entries SET ${fields.join(", ")} WHERE id = $${paramIdx}`, values);
+    const updated = await getOne("SELECT * FROM journal_entries WHERE id = $1", [req.params.id]);
 
     // Extract memories when publishing
     if (wasDraft && !updated.is_draft && updated.content) {
@@ -112,109 +120,121 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
     }
 
     res.json(formatEntry(updated));
-  });
+  }));
 
-  app.delete("/api/journal/entries/:id", (req, res) => {
-    const entry = db().prepare("SELECT * FROM journal_entries WHERE id = ?").get(req.params.id);
+  app.delete("/api/journal/entries/:id", asyncHandler(async (req, res) => {
+    const entry = await getOne("SELECT * FROM journal_entries WHERE id = $1", [req.params.id]);
     if (!entry) return res.status(404).json({ detail: "Entry not found" });
-    db().prepare("DELETE FROM journal_entries WHERE id = ?").run(req.params.id);
+    await run("DELETE FROM journal_entries WHERE id = $1", [req.params.id]);
     res.json({ deleted: true });
-  });
+  }));
 
   // ══════════════════════════════════════
   // Mood
   // ══════════════════════════════════════
   app.get("/api/mood/weather-options", (req, res) => res.json(MOOD_WEATHER));
 
-  app.post("/api/mood/", (req, res) => {
+  app.post("/api/mood/", asyncHandler(async (req, res) => {
     const { user_id = "default", entry_id = null, weather, note = "", energy_level = 5 } = req.body;
     if (!MOOD_WEATHER[weather]) return res.status(422).json({ detail: "Invalid weather" });
     if (energy_level < 1 || energy_level > 10) return res.status(422).json({ detail: "Energy 1-10" });
     const id = uuid();
-    db().prepare("INSERT INTO mood_entries (id, user_id, entry_id, weather, note, energy_level, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(id, user_id, entry_id, weather, note, energy_level, now());
-    const mood = db().prepare("SELECT * FROM mood_entries WHERE id = ?").get(id);
+    await run("INSERT INTO mood_entries (id, user_id, entry_id, weather, note, energy_level, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+      [id, user_id, entry_id, weather, note, energy_level, now()]);
+    const mood = await getOne("SELECT * FROM mood_entries WHERE id = $1", [id]);
     res.json(formatMood(mood));
-  });
+  }));
 
-  app.get("/api/mood/by-entry/:entryId", (req, res) => {
-    const mood = db().prepare("SELECT * FROM mood_entries WHERE entry_id = ? ORDER BY created_at DESC LIMIT 1").get(req.params.entryId);
+  app.get("/api/mood/by-entry/:entryId", asyncHandler(async (req, res) => {
+    const mood = await getOne("SELECT * FROM mood_entries WHERE entry_id = $1 ORDER BY created_at DESC LIMIT 1", [req.params.entryId]);
     if (!mood) return res.json(null);
     res.json(formatMood(mood));
-  });
+  }));
 
-  app.get("/api/mood/history", (req, res) => {
+  app.get("/api/mood/history", asyncHandler(async (req, res) => {
     const { user_id = "default", limit = "30" } = req.query;
-    const moods = db().prepare("SELECT * FROM mood_entries WHERE user_id = ? ORDER BY created_at DESC LIMIT ?")
-      .all(user_id, parseInt(limit));
+    const moods = await getAll("SELECT * FROM mood_entries WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2",
+      [user_id, parseInt(limit)]);
     res.json(moods.map(formatMood));
-  });
+  }));
 
-  app.patch("/api/mood/:id", (req, res) => {
-    const mood = db().prepare("SELECT * FROM mood_entries WHERE id = ?").get(req.params.id);
+  app.patch("/api/mood/:id", asyncHandler(async (req, res) => {
+    const mood = await getOne("SELECT * FROM mood_entries WHERE id = $1", [req.params.id]);
     if (!mood) return res.status(404).json({ detail: "Mood entry not found" });
     const { weather, note, energy_level } = req.body;
     if (weather !== undefined) {
       if (!MOOD_WEATHER[weather]) return res.status(422).json({ detail: "Invalid weather" });
-      db().prepare("UPDATE mood_entries SET weather = ? WHERE id = ?").run(weather, req.params.id);
+      await run("UPDATE mood_entries SET weather = $1 WHERE id = $2", [weather, req.params.id]);
     }
-    if (note !== undefined) db().prepare("UPDATE mood_entries SET note = ? WHERE id = ?").run(note, req.params.id);
+    if (note !== undefined) await run("UPDATE mood_entries SET note = $1 WHERE id = $2", [note, req.params.id]);
     if (energy_level !== undefined) {
       if (energy_level < 1 || energy_level > 10) return res.status(422).json({ detail: "Energy 1-10" });
-      db().prepare("UPDATE mood_entries SET energy_level = ? WHERE id = ?").run(energy_level, req.params.id);
+      await run("UPDATE mood_entries SET energy_level = $1 WHERE id = $2", [energy_level, req.params.id]);
     }
-    const updated = db().prepare("SELECT * FROM mood_entries WHERE id = ?").get(req.params.id);
+    const updated = await getOne("SELECT * FROM mood_entries WHERE id = $1", [req.params.id]);
     res.json(formatMood(updated));
-  });
+  }));
 
-  app.delete("/api/mood/:id", (req, res) => {
-    const mood = db().prepare("SELECT * FROM mood_entries WHERE id = ?").get(req.params.id);
+  app.delete("/api/mood/:id", asyncHandler(async (req, res) => {
+    const mood = await getOne("SELECT * FROM mood_entries WHERE id = $1", [req.params.id]);
     if (!mood) return res.status(404).json({ detail: "Mood entry not found" });
-    db().prepare("DELETE FROM mood_entries WHERE id = ?").run(req.params.id);
+    await run("DELETE FROM mood_entries WHERE id = $1", [req.params.id]);
     res.json({ deleted: true });
-  });
+  }));
 
   // ══════════════════════════════════════
   // Heroes
   // ══════════════════════════════════════
   app.get("/api/heroes/defaults", (req, res) => res.json(DEFAULT_HEROES));
 
-  app.get("/api/heroes/", (req, res) => {
+  app.get("/api/heroes/", asyncHandler(async (req, res) => {
     const { user_id = "default" } = req.query;
-    let heroes = db().prepare("SELECT * FROM user_heroes WHERE user_id = ? ORDER BY sort_order").all(user_id);
+    let heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 ORDER BY sort_order", [user_id]);
     if (!heroes.length) {
-      const insert = db().prepare("INSERT INTO user_heroes (id, user_id, name, description, is_active, sort_order) VALUES (?, ?, ?, ?, 1, ?)");
-      const tx = db().transaction(() => {
-        DEFAULT_HEROES.forEach((h, i) => insert.run(uuid(), user_id, h.name, h.description, i));
-      });
-      tx();
-      heroes = db().prepare("SELECT * FROM user_heroes WHERE user_id = ? ORDER BY sort_order").all(user_id);
+      const client = await getClient();
+      try {
+        await client.query("BEGIN");
+        for (let i = 0; i < DEFAULT_HEROES.length; i++) {
+          const h = DEFAULT_HEROES[i];
+          await client.query(
+            "INSERT INTO user_heroes (id, user_id, name, description, is_active, sort_order) VALUES ($1, $2, $3, $4, TRUE, $5)",
+            [uuid(), user_id, h.name, h.description, i]
+          );
+        }
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+      heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 ORDER BY sort_order", [user_id]);
     }
     res.json(heroes.map(h => ({ ...h, is_active: !!h.is_active })));
-  });
+  }));
 
-  app.post("/api/heroes/", (req, res) => {
+  app.post("/api/heroes/", asyncHandler(async (req, res) => {
     const { user_id = "default", name, description = "" } = req.body;
     const id = uuid();
-    db().prepare("INSERT INTO user_heroes (id, user_id, name, description) VALUES (?, ?, ?, ?)").run(id, user_id, name, description);
-    const hero = db().prepare("SELECT * FROM user_heroes WHERE id = ?").get(id);
+    await run("INSERT INTO user_heroes (id, user_id, name, description) VALUES ($1, $2, $3, $4)", [id, user_id, name, description]);
+    const hero = await getOne("SELECT * FROM user_heroes WHERE id = $1", [id]);
     res.json({ ...hero, is_active: !!hero.is_active });
-  });
+  }));
 
-  app.delete("/api/heroes/:id", (req, res) => {
-    const hero = db().prepare("SELECT * FROM user_heroes WHERE id = ?").get(req.params.id);
+  app.delete("/api/heroes/:id", asyncHandler(async (req, res) => {
+    const hero = await getOne("SELECT * FROM user_heroes WHERE id = $1", [req.params.id]);
     if (!hero) return res.status(404).json({ detail: "Hero not found" });
-    db().prepare("DELETE FROM user_heroes WHERE id = ?").run(req.params.id);
+    await run("DELETE FROM user_heroes WHERE id = $1", [req.params.id]);
     res.json({ deleted: true });
-  });
+  }));
 
-  app.patch("/api/heroes/:id/toggle", (req, res) => {
-    const hero = db().prepare("SELECT * FROM user_heroes WHERE id = ?").get(req.params.id);
+  app.patch("/api/heroes/:id/toggle", asyncHandler(async (req, res) => {
+    const hero = await getOne("SELECT * FROM user_heroes WHERE id = $1", [req.params.id]);
     if (!hero) return res.status(404).json({ detail: "Hero not found" });
-    const newVal = hero.is_active ? 0 : 1;
-    db().prepare("UPDATE user_heroes SET is_active = ? WHERE id = ?").run(newVal, req.params.id);
-    res.json({ id: hero.id, is_active: !!newVal });
-  });
+    const newVal = !hero.is_active;
+    await run("UPDATE user_heroes SET is_active = $1 WHERE id = $2", [newVal, req.params.id]);
+    res.json({ id: hero.id, is_active: newVal });
+  }));
 
   // ══════════════════════════════════════
   // Faith
@@ -227,9 +247,9 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
     res.json(out);
   });
 
-  app.get("/api/faith/", (req, res) => {
+  app.get("/api/faith/", asyncHandler(async (req, res) => {
     const { user_id = "default" } = req.query;
-    const prefs = db().prepare("SELECT * FROM user_preferences WHERE user_id = ?").get(user_id);
+    const prefs = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [user_id]);
     if (!prefs || !prefs.faith_tradition) return res.json(null);
     const t = FAITH_TRADITIONS[prefs.faith_tradition] || FAITH_TRADITIONS.other;
     res.json({
@@ -240,129 +260,144 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
       figures: t.figures || [],
       practices: t.practices || [],
     });
-  });
+  }));
 
-  app.put("/api/faith/", (req, res) => {
+  app.put("/api/faith/", asyncHandler(async (req, res) => {
     const { user_id = "default", faith_tradition, faith_notes = "" } = req.body;
     if (faith_tradition && !FAITH_TRADITIONS[faith_tradition]) return res.status(400).json({ detail: "Unknown tradition" });
-    const existing = db().prepare("SELECT * FROM user_preferences WHERE user_id = ?").get(user_id);
+    const existing = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [user_id]);
     if (existing) {
-      db().prepare("UPDATE user_preferences SET faith_tradition = ?, faith_notes = ?, updated_at = ? WHERE user_id = ?")
-        .run(faith_tradition, faith_notes, now(), user_id);
+      await run("UPDATE user_preferences SET faith_tradition = $1, faith_notes = $2, updated_at = $3 WHERE user_id = $4",
+        [faith_tradition, faith_notes, now(), user_id]);
     } else {
-      db().prepare("INSERT INTO user_preferences (id, user_id, faith_tradition, faith_notes) VALUES (?, ?, ?, ?)")
-        .run(uuid(), user_id, faith_tradition, faith_notes);
+      await run("INSERT INTO user_preferences (id, user_id, faith_tradition, faith_notes) VALUES ($1, $2, $3, $4)",
+        [uuid(), user_id, faith_tradition, faith_notes]);
     }
     const t = FAITH_TRADITIONS[faith_tradition] || FAITH_TRADITIONS.other;
     res.json({ faith_tradition, tradition_label: t.label, saved: true });
-  });
+  }));
 
   // ══════════════════════════════════════
   // Onboarding
   // ══════════════════════════════════════
-  app.get("/api/onboarding/status", (req, res) => {
+  app.get("/api/onboarding/status", asyncHandler(async (req, res) => {
     const { user_id = "default" } = req.query;
-    const prefs = db().prepare("SELECT * FROM user_preferences WHERE user_id = ?").get(user_id);
-    const heroCount = db().prepare("SELECT COUNT(*) as cnt FROM user_heroes WHERE user_id = ? AND is_active = 1").get(user_id)?.cnt || 0;
-    if (!prefs) return res.json({ onboarding_complete: false, faith_tradition: "", faith_label: "", hero_count: heroCount });
+    const prefs = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [user_id]);
+    const heroRow = await getOne("SELECT COUNT(*) as cnt FROM user_heroes WHERE user_id = $1 AND is_active = TRUE", [user_id]);
+    const heroCount = heroRow?.cnt || 0;
+    if (!prefs) return res.json({ onboarding_complete: false, faith_tradition: "", faith_label: "", hero_count: parseInt(heroCount) });
     const t = FAITH_TRADITIONS[prefs.faith_tradition] || {};
     res.json({
       onboarding_complete: !!prefs.onboarding_complete,
       faith_tradition: prefs.faith_tradition || "",
       faith_label: t.label || "",
-      hero_count: heroCount,
+      hero_count: parseInt(heroCount),
     });
-  });
+  }));
 
-  app.post("/api/onboarding/complete", (req, res) => {
+  app.post("/api/onboarding/complete", asyncHandler(async (req, res) => {
     const { user_id = "default", faith_tradition = "", faith_notes = "", about_me = "", heroes = null, reset = false } = req.body;
     if (reset) {
-      const existing = db().prepare("SELECT * FROM user_preferences WHERE user_id = ?").get(user_id);
+      const existing = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [user_id]);
       if (existing) {
-        db().prepare("UPDATE user_preferences SET faith_tradition = '', faith_notes = '', about_me = '', onboarding_complete = 0, updated_at = ? WHERE user_id = ?").run(now(), user_id);
+        await run("UPDATE user_preferences SET faith_tradition = '', faith_notes = '', about_me = '', onboarding_complete = FALSE, updated_at = $1 WHERE user_id = $2", [now(), user_id]);
       } else {
-        db().prepare("INSERT INTO user_preferences (id, user_id, onboarding_complete) VALUES (?, ?, 0)").run(uuid(), user_id);
+        await run("INSERT INTO user_preferences (id, user_id, onboarding_complete) VALUES ($1, $2, FALSE)", [uuid(), user_id]);
       }
-      db().prepare("DELETE FROM user_heroes WHERE user_id = ?").run(user_id);
+      await run("DELETE FROM user_heroes WHERE user_id = $1", [user_id]);
       return res.json({ onboarding_complete: false, message: "Onboarding has been reset" });
     }
-    const existing = db().prepare("SELECT * FROM user_preferences WHERE user_id = ?").get(user_id);
+    const existing = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [user_id]);
     if (existing) {
-      db().prepare("UPDATE user_preferences SET faith_tradition = ?, faith_notes = ?, about_me = ?, onboarding_complete = 1, updated_at = ? WHERE user_id = ?")
-        .run(faith_tradition, faith_notes, about_me, now(), user_id);
+      await run("UPDATE user_preferences SET faith_tradition = $1, faith_notes = $2, about_me = $3, onboarding_complete = TRUE, updated_at = $4 WHERE user_id = $5",
+        [faith_tradition, faith_notes, about_me, now(), user_id]);
     } else {
-      db().prepare("INSERT INTO user_preferences (id, user_id, faith_tradition, faith_notes, about_me, onboarding_complete) VALUES (?, ?, ?, ?, ?, 1)")
-        .run(uuid(), user_id, faith_tradition, faith_notes, about_me);
+      await run("INSERT INTO user_preferences (id, user_id, faith_tradition, faith_notes, about_me, onboarding_complete) VALUES ($1, $2, $3, $4, $5, TRUE)",
+        [uuid(), user_id, faith_tradition, faith_notes, about_me]);
     }
     if (heroes !== null) {
-      db().prepare("DELETE FROM user_heroes WHERE user_id = ?").run(user_id);
-      const ins = db().prepare("INSERT INTO user_heroes (id, user_id, name, description, sort_order) VALUES (?, ?, ?, ?, ?)");
-      const tx = db().transaction(() => {
-        heroes.forEach((h, i) => ins.run(uuid(), user_id, h.name, h.description || "", i));
-      });
-      tx();
+      await run("DELETE FROM user_heroes WHERE user_id = $1", [user_id]);
+      const client = await getClient();
+      try {
+        await client.query("BEGIN");
+        for (let i = 0; i < heroes.length; i++) {
+          const h = heroes[i];
+          await client.query(
+            "INSERT INTO user_heroes (id, user_id, name, description, sort_order) VALUES ($1, $2, $3, $4, $5)",
+            [uuid(), user_id, h.name, h.description || "", i]
+          );
+        }
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
     }
     // Clear old onboarding memories
-    db().prepare("DELETE FROM ai_memories WHERE user_id = ? AND source = 'onboarding'").run(user_id);
+    await run("DELETE FROM ai_memories WHERE user_id = $1 AND source = 'onboarding'", [user_id]);
     if (about_me?.trim()) {
-      db().prepare("INSERT INTO ai_memories (id, user_id, category, content, source) VALUES (?, ?, 'preference', ?, 'onboarding')")
-        .run(uuid(), user_id, `User shared during onboarding: ${about_me.trim()}`);
+      await run("INSERT INTO ai_memories (id, user_id, category, content, source) VALUES ($1, $2, 'preference', $3, 'onboarding')",
+        [uuid(), user_id, `User shared during onboarding: ${about_me.trim()}`]);
     }
     if (faith_notes?.trim()) {
-      db().prepare("INSERT INTO ai_memories (id, user_id, category, content, source) VALUES (?, ?, 'preference', ?, 'onboarding')")
-        .run(uuid(), user_id, `Faith background: ${faith_notes.trim()}`);
+      await run("INSERT INTO ai_memories (id, user_id, category, content, source) VALUES ($1, $2, 'preference', $3, 'onboarding')",
+        [uuid(), user_id, `Faith background: ${faith_notes.trim()}`]);
     }
     const t = FAITH_TRADITIONS[faith_tradition] || {};
     res.json({ onboarding_complete: true, suggested_figures: t.figures || [], suggested_practices: t.practices || [] });
-  });
+  }));
 
   // ══════════════════════════════════════
   // AI Memory
   // ══════════════════════════════════════
-  app.get("/api/memory/", (req, res) => {
+  app.get("/api/memory/", asyncHandler(async (req, res) => {
     const { user_id = "default", category, limit = "100" } = req.query;
-    let sql = "SELECT * FROM ai_memories WHERE user_id = ?";
+    let sql = "SELECT * FROM ai_memories WHERE user_id = $1";
     const params = [user_id];
-    if (category) { sql += " AND category = ?"; params.push(category); }
-    sql += " ORDER BY updated_at DESC LIMIT ?";
+    let paramIdx = 2;
+    if (category) { sql += ` AND category = $${paramIdx++}`; params.push(category); }
+    sql += ` ORDER BY updated_at DESC LIMIT $${paramIdx}`;
     params.push(parseInt(limit));
-    const memories = db().prepare(sql).all(...params);
+    const memories = await getAll(sql, params);
     res.json(memories.map(m => ({ ...m, is_active: !!m.is_active })));
-  });
+  }));
 
-  app.post("/api/memory/", (req, res) => {
+  app.post("/api/memory/", asyncHandler(async (req, res) => {
     const { user_id = "default", category, content, source = "manual" } = req.body;
     const id = uuid();
     const ts = now();
-    db().prepare("INSERT INTO ai_memories (id, user_id, category, content, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(id, user_id, category, content, source, ts, ts);
-    const memory = db().prepare("SELECT * FROM ai_memories WHERE id = ?").get(id);
+    await run("INSERT INTO ai_memories (id, user_id, category, content, source, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+      [id, user_id, category, content, source, ts, ts]);
+    const memory = await getOne("SELECT * FROM ai_memories WHERE id = $1", [id]);
     res.json({ ...memory, is_active: !!memory.is_active });
-  });
+  }));
 
-  app.delete("/api/memory/:id", (req, res) => {
-    const memory = db().prepare("SELECT * FROM ai_memories WHERE id = ?").get(req.params.id);
+  app.delete("/api/memory/:id", asyncHandler(async (req, res) => {
+    const memory = await getOne("SELECT * FROM ai_memories WHERE id = $1", [req.params.id]);
     if (!memory) return res.status(404).json({ detail: "Memory not found" });
-    db().prepare("DELETE FROM ai_memories WHERE id = ?").run(req.params.id);
+    await run("DELETE FROM ai_memories WHERE id = $1", [req.params.id]);
     res.json({ deleted: true });
-  });
+  }));
 
-  app.patch("/api/memory/:id/toggle", (req, res) => {
-    const memory = db().prepare("SELECT * FROM ai_memories WHERE id = ?").get(req.params.id);
+  app.patch("/api/memory/:id/toggle", asyncHandler(async (req, res) => {
+    const memory = await getOne("SELECT * FROM ai_memories WHERE id = $1", [req.params.id]);
     if (!memory) return res.status(404).json({ detail: "Memory not found" });
-    const newVal = memory.is_active ? 0 : 1;
-    db().prepare("UPDATE ai_memories SET is_active = ? WHERE id = ?").run(newVal, req.params.id);
-    res.json({ id: memory.id, is_active: !!newVal });
-  });
+    const newVal = !memory.is_active;
+    await run("UPDATE ai_memories SET is_active = $1 WHERE id = $2", [newVal, req.params.id]);
+    res.json({ id: memory.id, is_active: newVal });
+  }));
 
   // Memory compaction — uses AI to merge and summarize related memories
-  app.post("/api/memory/compact", async (req, res) => {
+  app.post("/api/memory/compact", asyncHandler(async (req, res) => {
     const { user_id = "default", category } = req.body;
-    let sql = "SELECT * FROM ai_memories WHERE user_id = ? AND is_active = 1";
+    let sql = "SELECT * FROM ai_memories WHERE user_id = $1 AND is_active = TRUE";
     const params = [user_id];
-    if (category) { sql += " AND category = ?"; params.push(category); }
+    let paramIdx = 2;
+    if (category) { sql += ` AND category = $${paramIdx++}`; params.push(category); }
     sql += " ORDER BY category, created_at";
-    const memories = db().prepare(sql).all(...params);
+    const memories = await getAll(sql, params);
     if (memories.length < 3) {
       return res.json({ status: "skip", message: "Not enough memories to compact (need at least 3).", before: memories.length, after: memories.length });
     }
@@ -403,13 +438,12 @@ Rules:
         }
         // Delete old memories in this category for this user
         const ids = catMemories.map(m => m.id);
-        const placeholders = ids.map(() => "?").join(",");
-        db().prepare(`DELETE FROM ai_memories WHERE id IN (${placeholders})`).run(...ids);
+        await run("DELETE FROM ai_memories WHERE id = ANY($1)", [ids]);
         // Insert compacted memories
         for (const item of compacted) {
           if (!item.content) continue;
-          db().prepare("INSERT INTO ai_memories (id, user_id, category, content, source, source_id, created_at, updated_at) VALUES (?, ?, ?, ?, 'compacted', NULL, ?, ?)")
-            .run(uuid(), user_id, item.category || cat, item.content, ts, ts);
+          await run("INSERT INTO ai_memories (id, user_id, category, content, source, source_id, created_at, updated_at) VALUES ($1, $2, $3, $4, 'compacted', NULL, $5, $6)",
+            [uuid(), user_id, item.category || cat, item.content, ts, ts]);
         }
         totalAfter += compacted.length;
       } catch (e) {
@@ -426,7 +460,7 @@ Rules:
       reduced: totalBefore - totalAfter,
       errors: errors.length ? errors : undefined,
     });
-  });
+  }));
 
   // ══════════════════════════════════════
   // AI Chat (simple — not conversation-persistent)
@@ -489,42 +523,43 @@ Rules:
   // ══════════════════════════════════════
   // Conversations (persistent chat)
   // ══════════════════════════════════════
-  app.get("/api/conversations/", (req, res) => {
+  app.get("/api/conversations/", asyncHandler(async (req, res) => {
     const { user_id = "default", entry_id, limit = "20" } = req.query;
-    let sql = "SELECT * FROM conversations WHERE user_id = ?";
+    let sql = "SELECT * FROM conversations WHERE user_id = $1";
     const params = [user_id];
-    if (entry_id) { sql += " AND entry_id = ?"; params.push(entry_id); }
-    sql += " ORDER BY updated_at DESC LIMIT ?";
+    let paramIdx = 2;
+    if (entry_id) { sql += ` AND entry_id = $${paramIdx++}`; params.push(entry_id); }
+    sql += ` ORDER BY updated_at DESC LIMIT $${paramIdx}`;
     params.push(parseInt(limit));
-    const convos = db().prepare(sql).all(...params);
+    const convos = await getAll(sql, params);
     res.json(convos.map(formatConversation));
-  });
+  }));
 
   app.get("/api/conversations/templates/list", (req, res) => res.json(getAllTemplates()));
 
-  app.get("/api/conversations/:id", (req, res) => {
-    const convo = db().prepare("SELECT * FROM conversations WHERE id = ?").get(req.params.id);
+  app.get("/api/conversations/:id", asyncHandler(async (req, res) => {
+    const convo = await getOne("SELECT * FROM conversations WHERE id = $1", [req.params.id]);
     if (!convo) return res.status(404).json({ detail: "Conversation not found" });
     res.json(formatConversation(convo));
-  });
+  }));
 
-  app.post("/api/conversations/send", async (req, res) => {
+  app.post("/api/conversations/send", asyncHandler(async (req, res) => {
     const { user_id = "default", conversation_id, entry_id, message, template_key } = req.body;
     try {
-      let convo = conversation_id ? db().prepare("SELECT * FROM conversations WHERE id = ?").get(conversation_id) : null;
+      let convo = conversation_id ? await getOne("SELECT * FROM conversations WHERE id = $1", [conversation_id]) : null;
       if (!convo) {
         const newId = uuid();
         const createTs = now();
-        db().prepare("INSERT INTO conversations (id, user_id, entry_id, messages, created_at, updated_at) VALUES (?, ?, ?, '[]', ?, ?)")
-          .run(newId, user_id, entry_id || null, createTs, createTs);
-        convo = db().prepare("SELECT * FROM conversations WHERE id = ?").get(newId);
+        await run("INSERT INTO conversations (id, user_id, entry_id, messages, created_at, updated_at) VALUES ($1, $2, $3, '[]', $4, $5)",
+          [newId, user_id, entry_id || null, createTs, createTs]);
+        convo = await getOne("SELECT * FROM conversations WHERE id = $1", [newId]);
       }
-      const memCtx = getMemoryContext(user_id);
+      const memCtx = await getMemoryContext(user_id);
       let system = getSystemPrompt();
       if (memCtx) system += "\n\n" + memCtx;
       const eid = entry_id || convo.entry_id;
       if (eid) {
-        const entry = db().prepare("SELECT * FROM journal_entries WHERE id = ?").get(eid);
+        const entry = await getOne("SELECT * FROM journal_entries WHERE id = $1", [eid]);
         if (entry?.content) system += `\n\nCURRENT JOURNAL ENTRY (what the person has written so far):\nTitle: ${entry.title}\n${entry.content}`;
       }
       const existingMsgs = JSON.parse(convo.messages || "[]");
@@ -544,8 +579,8 @@ Rules:
       }
       newMsgs.push({ role: "user", content: message, timestamp: ts });
       newMsgs.push({ role: "assistant", content: response, timestamp: ts });
-      db().prepare("UPDATE conversations SET messages = ?, updated_at = ? WHERE id = ?")
-        .run(JSON.stringify(newMsgs), ts, convo.id);
+      await run("UPDATE conversations SET messages = $1, updated_at = $2 WHERE id = $3",
+        [JSON.stringify(newMsgs), ts, convo.id]);
       extractMemories(`User said: ${message}\nAI responded: ${response}`, user_id, "conversation", convo.id)
         .then(() => maybeAutoCompact(user_id))
         .catch((e) => console.error("[Memory] post-conversation error:", e.message));
@@ -555,29 +590,29 @@ Rules:
       console.error(`[conversations/send] AI error — provider: ${s.ai_provider}, model: ${s.ollama_model || s.openai_model}, base_url: ${s.ollama_base_url}, error:`, e.message);
       res.status(502).json({ detail: `AI provider error: ${e.message}` });
     }
-  });
+  }));
 
-  app.post("/api/conversations/send/stream", async (req, res) => {
+  app.post("/api/conversations/send/stream", asyncHandler(async (req, res) => {
     const { user_id = "default", conversation_id, entry_id, message, template_key } = req.body;
     try {
-      let convo = conversation_id ? db().prepare("SELECT * FROM conversations WHERE id = ?").get(conversation_id) : null;
+      let convo = conversation_id ? await getOne("SELECT * FROM conversations WHERE id = $1", [conversation_id]) : null;
       if (!convo) {
         const newId = uuid();
         const createTs = now();
-        db().prepare("INSERT INTO conversations (id, user_id, entry_id, messages, created_at, updated_at) VALUES (?, ?, ?, '[]', ?, ?)")
-          .run(newId, user_id, entry_id || null, createTs, createTs);
-        convo = db().prepare("SELECT * FROM conversations WHERE id = ?").get(newId);
+        await run("INSERT INTO conversations (id, user_id, entry_id, messages, created_at, updated_at) VALUES ($1, $2, $3, '[]', $4, $5)",
+          [newId, user_id, entry_id || null, createTs, createTs]);
+        convo = await getOne("SELECT * FROM conversations WHERE id = $1", [newId]);
       }
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
       res.setHeader("X-Conversation-Id", convo.id);
-      const memCtx = getMemoryContext(user_id);
+      const memCtx = await getMemoryContext(user_id);
       let system = getSystemPrompt();
       if (memCtx) system += "\n\n" + memCtx;
       const eid = entry_id || convo.entry_id;
       if (eid) {
-        const entry = db().prepare("SELECT * FROM journal_entries WHERE id = ?").get(eid);
+        const entry = await getOne("SELECT * FROM journal_entries WHERE id = $1", [eid]);
         if (entry?.content) system += `\n\nCURRENT JOURNAL ENTRY:\nTitle: ${entry.title}\n${entry.content}`;
       }
       const existingMsgs = JSON.parse(convo.messages || "[]");
@@ -604,8 +639,8 @@ Rules:
       }
       newMsgs.push({ role: "user", content: message, timestamp: ts });
       newMsgs.push({ role: "assistant", content: fullResponse, timestamp: ts });
-      db().prepare("UPDATE conversations SET messages = ?, updated_at = ? WHERE id = ?")
-        .run(JSON.stringify(newMsgs), ts, convo.id);
+      await run("UPDATE conversations SET messages = $1, updated_at = $2 WHERE id = $3",
+        [JSON.stringify(newMsgs), ts, convo.id]);
       extractMemories(`User said: ${message}\nAI responded: ${fullResponse}`, user_id, "conversation", convo.id)
         .then(() => maybeAutoCompact(user_id))
         .catch((e) => console.error("[Memory] post-stream error:", e.message));
@@ -616,27 +651,27 @@ Rules:
       res.write(`data: [ERROR] ${e.message}\n\n`);
       res.end();
     }
-  });
+  }));
 
-  app.post("/api/conversations/:id/end", (req, res) => {
-    const convo = db().prepare("SELECT * FROM conversations WHERE id = ?").get(req.params.id);
+  app.post("/api/conversations/:id/end", asyncHandler(async (req, res) => {
+    const convo = await getOne("SELECT * FROM conversations WHERE id = $1", [req.params.id]);
     if (!convo) return res.status(404).json({ detail: "Conversation not found" });
-    db().prepare("UPDATE conversations SET is_active = 0, updated_at = ? WHERE id = ?").run(now(), req.params.id);
+    await run("UPDATE conversations SET is_active = FALSE, updated_at = $1 WHERE id = $2", [now(), req.params.id]);
     res.json({ id: convo.id, ended: true });
-  });
+  }));
 
   // ══════════════════════════════════════
   // Uploads
   // ══════════════════════════════════════
-  app.post("/api/uploads/", upload.single("file"), (req, res) => {
+  app.post("/api/uploads/", upload.single("file"), asyncHandler(async (req, res) => {
     if (!req.file) return res.status(400).json({ detail: "No file or invalid type" });
     const { user_id = "default", entry_id, caption = "" } = req.body;
     const id = uuid();
-    db().prepare("INSERT INTO attachments (id, user_id, entry_id, filename, original_name, content_type, size_bytes, caption, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(id, user_id, entry_id || null, req.file.filename, req.file.originalname, req.file.mimetype, req.file.size, caption, now());
-    const att = db().prepare("SELECT * FROM attachments WHERE id = ?").get(id);
+    await run("INSERT INTO attachments (id, user_id, entry_id, filename, original_name, content_type, size_bytes, caption, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+      [id, user_id, entry_id || null, req.file.filename, req.file.originalname, req.file.mimetype, req.file.size, caption, now()]);
+    const att = await getOne("SELECT * FROM attachments WHERE id = $1", [id]);
     res.json(formatAttachment(att));
-  });
+  }));
 
   app.get("/api/uploads/file/:filename", (req, res) => {
     const safe = path.basename(req.params.filename);
@@ -645,138 +680,147 @@ Rules:
     res.sendFile(filePath);
   });
 
-  app.get("/api/uploads/", (req, res) => {
+  app.get("/api/uploads/", asyncHandler(async (req, res) => {
     const { user_id = "default", entry_id, limit = "50" } = req.query;
-    let sql = "SELECT * FROM attachments WHERE user_id = ?";
+    let sql = "SELECT * FROM attachments WHERE user_id = $1";
     const params = [user_id];
-    if (entry_id) { sql += " AND entry_id = ?"; params.push(entry_id); }
-    sql += " ORDER BY created_at DESC LIMIT ?";
+    let paramIdx = 2;
+    if (entry_id) { sql += ` AND entry_id = $${paramIdx++}`; params.push(entry_id); }
+    sql += ` ORDER BY created_at DESC LIMIT $${paramIdx}`;
     params.push(parseInt(limit));
-    res.json(db().prepare(sql).all(...params).map(formatAttachment));
-  });
+    res.json((await getAll(sql, params)).map(formatAttachment));
+  }));
 
-  app.patch("/api/uploads/:id", (req, res) => {
-    const att = db().prepare("SELECT * FROM attachments WHERE id = ?").get(req.params.id);
+  app.patch("/api/uploads/:id", asyncHandler(async (req, res) => {
+    const att = await getOne("SELECT * FROM attachments WHERE id = $1", [req.params.id]);
     if (!att) return res.status(404).json({ detail: "Attachment not found" });
     const { entry_id, caption } = req.body;
-    if (entry_id !== undefined) db().prepare("UPDATE attachments SET entry_id = ? WHERE id = ?").run(entry_id, req.params.id);
-    if (caption !== undefined) db().prepare("UPDATE attachments SET caption = ? WHERE id = ?").run(caption, req.params.id);
-    const updated = db().prepare("SELECT * FROM attachments WHERE id = ?").get(req.params.id);
+    if (entry_id !== undefined) await run("UPDATE attachments SET entry_id = $1 WHERE id = $2", [entry_id, req.params.id]);
+    if (caption !== undefined) await run("UPDATE attachments SET caption = $1 WHERE id = $2", [caption, req.params.id]);
+    const updated = await getOne("SELECT * FROM attachments WHERE id = $1", [req.params.id]);
     res.json(formatAttachment(updated));
-  });
+  }));
 
-  app.delete("/api/uploads/:id", (req, res) => {
-    const att = db().prepare("SELECT * FROM attachments WHERE id = ?").get(req.params.id);
+  app.delete("/api/uploads/:id", asyncHandler(async (req, res) => {
+    const att = await getOne("SELECT * FROM attachments WHERE id = $1", [req.params.id]);
     if (!att) return res.status(404).json({ detail: "Attachment not found" });
     const filePath = path.join(uploadDir, att.filename);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    db().prepare("DELETE FROM attachments WHERE id = ?").run(req.params.id);
+    await run("DELETE FROM attachments WHERE id = $1", [req.params.id]);
     res.json({ deleted: true });
-  });
+  }));
 
   // ══════════════════════════════════════
   // Groups
   // ══════════════════════════════════════
-  app.post("/api/groups/", (req, res) => {
+  app.post("/api/groups/", asyncHandler(async (req, res) => {
     const { name, description = "", created_by = "default" } = req.body;
     const id = uuid();
     const inviteCode = crypto.randomBytes(9).toString("base64url");
-    db().prepare("INSERT INTO group_journals (id, name, description, created_by, invite_code, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(id, name, description, created_by, inviteCode, now());
-    db().prepare("INSERT INTO group_members (id, group_id, user_id, role) VALUES (?, ?, ?, 'sponsor')")
-      .run(uuid(), id, created_by);
-    const group = db().prepare("SELECT * FROM group_journals WHERE id = ?").get(id);
+    await run("INSERT INTO group_journals (id, name, description, created_by, invite_code, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+      [id, name, description, created_by, inviteCode, now()]);
+    await run("INSERT INTO group_members (id, group_id, user_id, role) VALUES ($1, $2, $3, 'sponsor')",
+      [uuid(), id, created_by]);
+    const group = await getOne("SELECT * FROM group_journals WHERE id = $1", [id]);
     res.json(group);
-  });
+  }));
 
-  app.post("/api/groups/join", (req, res) => {
+  app.post("/api/groups/join", asyncHandler(async (req, res) => {
     const { user_id, invite_code, role = "member" } = req.body;
-    const group = db().prepare("SELECT * FROM group_journals WHERE invite_code = ?").get(invite_code);
+    const group = await getOne("SELECT * FROM group_journals WHERE invite_code = $1", [invite_code]);
     if (!group) return res.status(404).json({ detail: "Invalid invite code" });
-    const existing = db().prepare("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?").get(group.id, user_id);
+    const existing = await getOne("SELECT * FROM group_members WHERE group_id = $1 AND user_id = $2", [group.id, user_id]);
     if (existing) return res.status(400).json({ detail: "Already a member" });
-    db().prepare("INSERT INTO group_members (id, group_id, user_id, role) VALUES (?, ?, ?, ?)").run(uuid(), group.id, user_id, role);
+    await run("INSERT INTO group_members (id, group_id, user_id, role) VALUES ($1, $2, $3, $4)", [uuid(), group.id, user_id, role]);
     res.json({ joined: true, group_name: group.name });
-  });
+  }));
 
-  app.post("/api/groups/share", (req, res) => {
+  app.post("/api/groups/share", asyncHandler(async (req, res) => {
     const { entry_id, group_id, shared_by } = req.body;
-    db().prepare("INSERT INTO shared_entries (id, entry_id, group_id, shared_by, shared_at) VALUES (?, ?, ?, ?, ?)")
-      .run(uuid(), entry_id, group_id, shared_by, now());
+    await run("INSERT INTO shared_entries (id, entry_id, group_id, shared_by, shared_at) VALUES ($1, $2, $3, $4, $5)",
+      [uuid(), entry_id, group_id, shared_by, now()]);
     res.json({ shared: true });
-  });
+  }));
 
-  app.get("/api/groups/:userId", (req, res) => {
-    const groups = db().prepare(`SELECT g.* FROM group_journals g JOIN group_members m ON m.group_id = g.id WHERE m.user_id = ?`)
-      .all(req.params.userId);
+  app.get("/api/groups/:userId", asyncHandler(async (req, res) => {
+    const groups = await getAll("SELECT g.* FROM group_journals g JOIN group_members m ON m.group_id = g.id WHERE m.user_id = $1",
+      [req.params.userId]);
     res.json(groups);
-  });
+  }));
 
   // ══════════════════════════════════════
   // Sync
   // ══════════════════════════════════════
-  app.get("/api/sync/export", (req, res) => {
+  app.get("/api/sync/export", asyncHandler(async (req, res) => {
     const { user_id = "default" } = req.query;
-    const entries = db().prepare("SELECT * FROM journal_entries WHERE user_id = ? ORDER BY created_at").all(user_id);
-    const syncEntries = entries.map(e => {
-      const mood = db().prepare("SELECT * FROM mood_entries WHERE entry_id = ?").get(e.id);
-      return {
+    const entries = await getAll("SELECT * FROM journal_entries WHERE user_id = $1 ORDER BY created_at", [user_id]);
+    const syncEntries = [];
+    for (const e of entries) {
+      const mood = await getOne("SELECT * FROM mood_entries WHERE entry_id = $1", [e.id]);
+      syncEntries.push({
         id: e.id, title: e.title, content: e.content, content_html: e.content_html,
         prompt_used: e.prompt_used, is_draft: !!e.is_draft,
         sections_included: e.sections_included ? JSON.parse(e.sections_included) : null,
         entry_date: e.entry_date, created_at: e.created_at, updated_at: e.updated_at,
         mood_weather: mood?.weather || null, mood_note: mood?.note || "", mood_energy: mood?.energy_level || 5,
-      };
-    });
-    const moods = db().prepare("SELECT * FROM mood_entries WHERE user_id = ? ORDER BY created_at").all(user_id);
-    const convos = db().prepare("SELECT * FROM conversations WHERE user_id = ? ORDER BY created_at").all(user_id).map(formatConversation);
-    const memories = db().prepare("SELECT * FROM ai_memories WHERE user_id = ? ORDER BY created_at").all(user_id).map(m => ({ ...m, is_active: !!m.is_active }));
-    const heroes = db().prepare("SELECT * FROM user_heroes WHERE user_id = ? ORDER BY sort_order").all(user_id).map(h => ({ ...h, is_active: !!h.is_active }));
-    const atts = db().prepare("SELECT * FROM attachments WHERE user_id = ? ORDER BY created_at").all(user_id);
-    const prefs = db().prepare("SELECT * FROM user_preferences WHERE user_id = ?").get(user_id);
+      });
+    }
+    const moods = await getAll("SELECT * FROM mood_entries WHERE user_id = $1 ORDER BY created_at", [user_id]);
+    const convos = (await getAll("SELECT * FROM conversations WHERE user_id = $1 ORDER BY created_at", [user_id])).map(formatConversation);
+    const memories = (await getAll("SELECT * FROM ai_memories WHERE user_id = $1 ORDER BY created_at", [user_id])).map(m => ({ ...m, is_active: !!m.is_active }));
+    const heroes = (await getAll("SELECT * FROM user_heroes WHERE user_id = $1 ORDER BY sort_order", [user_id])).map(h => ({ ...h, is_active: !!h.is_active }));
+    const atts = await getAll("SELECT * FROM attachments WHERE user_id = $1 ORDER BY created_at", [user_id]);
+    const prefs = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [user_id]);
     res.json({
       entries: syncEntries, moods, conversations: convos, memories, heroes, attachments: atts,
       preferences: prefs ? { faith_tradition: prefs.faith_tradition, faith_notes: prefs.faith_notes, about_me: prefs.about_me, onboarding_complete: !!prefs.onboarding_complete } : null,
       exported_at: now(),
     });
-  });
+  }));
 
-  app.post("/api/sync/import", (req, res) => {
+  app.post("/api/sync/import", asyncHandler(async (req, res) => {
     const { user_id = "default", entries = [] } = req.body;
     let imported = 0, updated = 0;
-    const tx = db().transaction(() => {
+    const client = await getClient();
+    try {
+      await client.query("BEGIN");
       for (const se of entries) {
         if (se.id) {
-          const existing = db().prepare("SELECT * FROM journal_entries WHERE id = ?").get(se.id);
-          if (existing) {
-            db().prepare("UPDATE journal_entries SET title = ?, content = ?, content_html = ?, prompt_used = ?, is_draft = ?, updated_at = ? WHERE id = ?")
-              .run(se.title, se.content, se.content_html, se.prompt_used, se.is_draft ? 1 : 0, now(), se.id);
+          const { rows } = await client.query("SELECT * FROM journal_entries WHERE id = $1", [se.id]);
+          if (rows[0]) {
+            await client.query("UPDATE journal_entries SET title = $1, content = $2, content_html = $3, prompt_used = $4, is_draft = $5, updated_at = $6 WHERE id = $7",
+              [se.title, se.content, se.content_html, se.prompt_used, !!se.is_draft, now(), se.id]);
             updated++;
             continue;
           }
         }
         const entryId = se.id || uuid();
-        db().prepare("INSERT INTO journal_entries (id, user_id, title, content, content_html, prompt_used, is_draft, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-          .run(entryId, user_id, se.title, se.content, se.content_html, se.prompt_used, se.is_draft ? 1 : 0, se.created_at || now(), now());
+        await client.query("INSERT INTO journal_entries (id, user_id, title, content, content_html, prompt_used, is_draft, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+          [entryId, user_id, se.title, se.content, se.content_html, se.prompt_used, !!se.is_draft, se.created_at || now(), now()]);
         if (se.mood_weather) {
-          db().prepare("INSERT INTO mood_entries (id, user_id, entry_id, weather, note, energy_level, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-            .run(uuid(), user_id, entryId, se.mood_weather, se.mood_note || "", se.mood_energy || 5, now());
+          await client.query("INSERT INTO mood_entries (id, user_id, entry_id, weather, note, energy_level, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            [uuid(), user_id, entryId, se.mood_weather, se.mood_note || "", se.mood_energy || 5, now()]);
         }
         imported++;
       }
-    });
-    tx();
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
     res.json({ imported, updated });
-  });
+  }));
 
   // ══════════════════════════════════════
   // Export (PDF via HTML — Electron uses printToPDF)
   // ══════════════════════════════════════
-  app.post("/api/export/journal-book", async (req, res) => {
+  app.post("/api/export/journal-book", asyncHandler(async (req, res) => {
     const { user_id = "default", title, author, year, dedication = "", start_date, end_date,
       include_conversations = true, include_heroes = true, include_memories = true,
       include_photos = true, include_statistics = true, format = "html" } = req.body;
-    const entries = db().prepare("SELECT * FROM journal_entries WHERE user_id = ? AND is_draft = 0 ORDER BY created_at").all(user_id);
+    const entries = await getAll("SELECT * FROM journal_entries WHERE user_id = $1 AND is_draft = FALSE ORDER BY created_at", [user_id]);
     if (!entries.length) return res.status(404).json({ detail: "No published entries to export" });
 
     const opts = { user_id, title, author, year, dedication, start_date, end_date,
@@ -784,25 +828,25 @@ Rules:
       uploadDir };
 
     if (format === "markdown" || format === "md") {
-      const md = buildBookMarkdown(entries, opts);
+      const md = await buildBookMarkdown(entries, opts);
       res.setHeader("Content-Type", "text/markdown; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="recovery-journal-${year || new Date().getFullYear()}.md"`);
       res.send(md);
     } else {
-      const html = buildBookHtml(entries, opts);
+      const html = await buildBookHtml(entries, opts);
       res.setHeader("Content-Type", "text/html");
       res.send(html);
     }
-  });
+  }));
 
-  app.get("/api/export/entries-json", (req, res) => {
+  app.get("/api/export/entries-json", asyncHandler(async (req, res) => {
     const { user_id = "default" } = req.query;
-    const entries = db().prepare("SELECT * FROM journal_entries WHERE user_id = ? ORDER BY created_at").all(user_id);
+    const entries = await getAll("SELECT * FROM journal_entries WHERE user_id = $1 ORDER BY created_at", [user_id]);
     res.json(entries.map(e => ({
       id: e.id, title: e.title, content: e.content, content_html: e.content_html,
       prompt_used: e.prompt_used, is_draft: !!e.is_draft, created_at: e.created_at, updated_at: e.updated_at,
     })));
-  });
+  }));
 
   // ══════════════════════════════════════
   // Settings
@@ -856,32 +900,33 @@ Rules:
     });
   });
 
-  app.put("/api/settings/ai", (req, res) => {
-    let config = db().prepare("SELECT * FROM app_config WHERE id = 'default'").get();
+  app.put("/api/settings/ai", asyncHandler(async (req, res) => {
+    let config = await getOne("SELECT * FROM app_config WHERE id = 'default'");
     if (!config) {
-      db().prepare("INSERT INTO app_config (id) VALUES ('default')").run();
-      config = db().prepare("SELECT * FROM app_config WHERE id = 'default'").get();
+      await run("INSERT INTO app_config (id) VALUES ('default')");
+      config = await getOne("SELECT * FROM app_config WHERE id = 'default'");
     }
     const updates = [];
     const values = [];
+    let paramIdx = 1;
     for (const field of CONFIG_FIELDS) {
       if (req.body[field] !== undefined) {
-        updates.push(`${field} = ?`);
+        updates.push(`${field} = $${paramIdx++}`);
         values.push(req.body[field]);
       }
     }
     if (updates.length) {
-      updates.push("updated_at = ?");
+      updates.push(`updated_at = $${paramIdx++}`);
       values.push(now());
-      db().prepare(`UPDATE app_config SET ${updates.join(", ")} WHERE id = 'default'`).run(...values);
+      await run(`UPDATE app_config SET ${updates.join(", ")} WHERE id = 'default'`, values);
     }
     // Apply to runtime
-    const newConfig = db().prepare("SELECT * FROM app_config WHERE id = 'default'").get();
+    const newConfig = await getOne("SELECT * FROM app_config WHERE id = 'default'");
     const settingsUpdate = {};
     for (const f of CONFIG_FIELDS) { if (newConfig[f]) settingsUpdate[f] = newConfig[f]; }
     ai.updateSettings(settingsUpdate);
     res.json({ status: "ok", active_provider: ai.getSettings().ai_provider, provider_ready: checkProviderReady(ai.getSettings().ai_provider) });
-  });
+  }));
 
   app.post("/api/settings/ai/test", async (req, res) => {
     const s = ai.getSettings();
@@ -1017,7 +1062,7 @@ Rules:
   });
 
   // Validate and auto-fix Ollama model — called at startup and when settings change
-  app.post("/api/ollama/validate-model", async (req, res) => {
+  app.post("/api/ollama/validate-model", asyncHandler(async (req, res) => {
     const s = ai.getSettings();
     if (s.ai_provider !== "ollama") return res.json({ status: "not-ollama" });
     const url = s.ollama_base_url || "http://localhost:11434";
@@ -1039,14 +1084,14 @@ Rules:
       console.log(`[StepScribe] Ollama model "${currentModel}" not found. Auto-switching to "${chatModel}". Available: ${installed.join(", ")}`);
       // Update DB and runtime
       ai.updateSettings({ ollama_model: chatModel });
-      let config = db().prepare("SELECT * FROM app_config WHERE id = 'default'").get();
-      if (!config) { db().prepare("INSERT INTO app_config (id) VALUES ('default')").run(); }
-      db().prepare("UPDATE app_config SET ollama_model = ?, updated_at = ? WHERE id = 'default'").run(chatModel, now());
+      let config = await getOne("SELECT * FROM app_config WHERE id = 'default'");
+      if (!config) { await run("INSERT INTO app_config (id) VALUES ('default')"); }
+      await run("UPDATE app_config SET ollama_model = $1, updated_at = $2 WHERE id = 'default'", [chatModel, now()]);
       res.json({ status: "auto-fixed", model: chatModel, was: currentModel, available: installed });
     } catch (e) {
       res.json({ status: "error", error: e.message });
     }
-  });
+  }));
 
   app.get("/api/ollama/install-instructions", (req, res) => {
     const plat = process.platform;
@@ -1167,8 +1212,8 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
       let count = 0;
       for (const item of insights.slice(0, 5)) {
         if (!item.category || !item.content || !MEMORY_CATEGORIES.includes(item.category)) continue;
-        db().prepare("INSERT INTO ai_memories (id, user_id, category, content, source, source_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-          .run(uuid(), userId, item.category, item.content, source, sourceId || null, ts, ts);
+        await run("INSERT INTO ai_memories (id, user_id, category, content, source, source_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+          [uuid(), userId, item.category, item.content, source, sourceId || null, ts, ts]);
         count++;
       }
       console.log(`[Memory] Extracted ${count} memories from ${source}`);
@@ -1182,12 +1227,13 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
   // ── Auto-compaction: runs after memory extraction if count is high ──
   async function maybeAutoCompact(userId) {
     try {
-      const count = db().prepare("SELECT COUNT(*) as cnt FROM ai_memories WHERE user_id = ? AND is_active = 1").get(userId)?.cnt || 0;
+      const countRow = await getOne("SELECT COUNT(*) as cnt FROM ai_memories WHERE user_id = $1 AND is_active = TRUE", [userId]);
+      const count = parseInt(countRow?.cnt) || 0;
       if (count < 30) return; // Only compact when there are enough memories
       console.log(`[Memory] Auto-compacting ${count} memories for user ${userId}`);
       // Group by category and compact categories with > 8 entries
       for (const cat of MEMORY_CATEGORIES) {
-        const catMemories = db().prepare("SELECT * FROM ai_memories WHERE user_id = ? AND category = ? AND is_active = 1 ORDER BY updated_at DESC").all(userId, cat);
+        const catMemories = await getAll("SELECT * FROM ai_memories WHERE user_id = $1 AND category = $2 AND is_active = TRUE ORDER BY updated_at DESC", [userId, cat]);
         if (catMemories.length <= 8) continue;
         const contents = catMemories.map(m => m.content).join("\n- ");
         const compactPrompt = `Merge these related memories about a person into 3-5 concise, non-redundant summaries. Return a JSON object: {"merged": ["summary1", "summary2", ...]}\n\nMemories:\n- ${contents}`;
@@ -1201,13 +1247,12 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
         if (!merged || !Array.isArray(merged) || merged.length === 0) continue;
         // Deactivate old, insert merged
         const ids = catMemories.map(m => m.id);
-        const placeholders = ids.map(() => "?").join(",");
-        db().prepare(`UPDATE ai_memories SET is_active = 0 WHERE id IN (${placeholders})`).run(...ids);
+        await run("UPDATE ai_memories SET is_active = FALSE WHERE id = ANY($1)", [ids]);
         const ts = now();
         for (const summary of merged.slice(0, 5)) {
           if (typeof summary === "string" && summary.trim()) {
-            db().prepare("INSERT INTO ai_memories (id, user_id, category, content, source, source_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-              .run(uuid(), userId, cat, summary.trim(), "compaction", null, ts, ts);
+            await run("INSERT INTO ai_memories (id, user_id, category, content, source, source_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+              [uuid(), userId, cat, summary.trim(), "compaction", null, ts, ts]);
           }
         }
         console.log(`[Memory] Compacted ${cat}: ${catMemories.length} → ${merged.length}`);
@@ -1218,9 +1263,9 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
   }
 
   // ── Memory context builder ──
-  function getMemoryContext(userId) {
+  async function getMemoryContext(userId) {
     const parts = [];
-    const prefs = db().prepare("SELECT * FROM user_preferences WHERE user_id = ?").get(userId);
+    const prefs = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [userId]);
     if (prefs?.about_me) parts.push(`ABOUT THIS PERSON (their own words): "${prefs.about_me}"`);
     if (prefs?.faith_tradition) {
       const t = FAITH_TRADITIONS[prefs.faith_tradition] || {};
@@ -1230,11 +1275,11 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
       if (t.practices?.length) s += ` Practices: ${t.practices.join(", ")}.`;
       parts.push(s);
     }
-    const heroes = db().prepare("SELECT name FROM user_heroes WHERE user_id = ? AND is_active = 1 ORDER BY sort_order").all(userId);
+    const heroes = await getAll("SELECT name FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [userId]);
     if (heroes.length) {
       parts.push(`HEROES THEY DRAW INSPIRATION FROM: ${heroes.map(h => h.name).join(", ")}. Reference their wisdom when it fits naturally.`);
     }
-    const memories = db().prepare("SELECT * FROM ai_memories WHERE user_id = ? AND is_active = 1 ORDER BY updated_at DESC LIMIT 50").all(userId);
+    const memories = await getAll("SELECT * FROM ai_memories WHERE user_id = $1 AND is_active = TRUE ORDER BY updated_at DESC LIMIT 50", [userId]);
     if (memories.length) {
       const byCat = {};
       for (const m of memories) { (byCat[m.category] = byCat[m.category] || []).push(m.content); }
@@ -1246,7 +1291,7 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
       }
       parts.push(lines.join("\n"));
     }
-    const moods = db().prepare("SELECT * FROM mood_entries WHERE user_id = ? ORDER BY created_at DESC LIMIT 7").all(userId);
+    const moods = await getAll("SELECT * FROM mood_entries WHERE user_id = $1 ORDER BY created_at DESC LIMIT 7", [userId]);
     if (moods.length) {
       const trend = moods.reverse().map(m => {
         const info = MOOD_WEATHER[m.weather] || {};
@@ -1258,15 +1303,16 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
   }
 
   // ── Simple book HTML builder ──
-  function buildBookHtml(entries, opts) {
+  async function buildBookHtml(entries, opts) {
     const escHtml = s => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const bookTitle = escHtml(opts.title || "My Recovery Journal");
     const bookAuthor = escHtml(opts.author || "");
     const bookYear = escHtml(opts.year || new Date().getFullYear().toString());
 
     let chaptersHtml = "";
-    entries.forEach((e, i) => {
-      const mood = db().prepare("SELECT * FROM mood_entries WHERE entry_id = ?").get(e.id);
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      const mood = await getOne("SELECT * FROM mood_entries WHERE entry_id = $1", [e.id]);
       const moodInfo = mood ? (MOOD_WEATHER[mood.weather] || {}) : null;
       let moodBlock = "";
       if (moodInfo) {
@@ -1283,7 +1329,7 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
           ${moodBlock}
           <div>${e.content_html || `<p>${escHtml(e.content)}</p>`}</div>
         </div>`;
-    });
+    }
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
       <style>body{font-family:Georgia,serif;max-width:700px;margin:0 auto;padding:40px 20px;color:#222;line-height:1.7;}
@@ -1295,7 +1341,7 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
   }
 
   // ── Simple book Markdown builder ──
-  function buildBookMarkdown(entries, opts) {
+  async function buildBookMarkdown(entries, opts) {
     const bookTitle = opts.title || "My Recovery Journal";
     const bookAuthor = opts.author || "";
     const bookYear = opts.year || new Date().getFullYear().toString();
@@ -1306,11 +1352,12 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
     if (opts.dedication) md += `> ${opts.dedication}\n\n`;
     md += `---\n\n`;
 
-    entries.forEach((e, i) => {
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
       md += `## ${e.title || "Untitled"}\n\n`;
       md += `*${e.created_at}*\n\n`;
 
-      const mood = db().prepare("SELECT * FROM mood_entries WHERE entry_id = ?").get(e.id);
+      const mood = await getOne("SELECT * FROM mood_entries WHERE entry_id = $1", [e.id]);
       const moodInfo = mood ? (MOOD_WEATHER[mood.weather] || {}) : null;
       if (moodInfo) {
         md += `> **${moodInfo.label}** — ${moodInfo.description}`;
@@ -1332,7 +1379,7 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
       }
 
       md += `---\n\n`;
-    });
+    }
 
     return md;
   }
