@@ -11,6 +11,7 @@
 <p align="center">
   <a href="https://github.com/TimKenobi/StepScribe/releases/latest">📥 Download</a> &nbsp;·&nbsp;
   <a href="https://stepscribe.org">🌐 Website</a> &nbsp;·&nbsp;
+  <a href="https://lumenfidei.tech">✝️ Lumen Fidei</a> &nbsp;·&nbsp;
   <a href="https://buymeacoffee.com/timkenobi">☕ Buy Me a Coffee</a>
 </p>
 
