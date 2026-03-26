@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StepScribe — AI-Powered Recovery Journaling</title>
+  <meta name="description" content="StepScribe is a private recovery journaling companion with a persistent AI sponsor that remembers your story. Free, local, and completely private. Available for macOS, Windows, and Linux.">
+  <meta name="keywords" content="recovery journal, 12 step journal, addiction recovery app, sober journal, AI journal, recovery companion, step work, sobriety tracker, mental health journal">
+  <meta name="author" content="Pixel Space Technologies LLC">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://stepscribe.app/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="StepScribe — AI-Powered Recovery Journaling">
+  <meta property="og:description" content="A private recovery journaling companion with a persistent AI sponsor that remembers your story. Free, local, and completely private.">
+  <meta property="og:image" content="https://stepscribe.app/img/og-image.png">
+  <meta property="og:url" content="https://stepscribe.app/">
+  <meta property="og:site_name" content="StepScribe">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="StepScribe — AI-Powered Recovery Journaling">
+  <meta name="twitter:description" content="A private recovery journaling companion with a persistent AI sponsor that remembers your story.">
+  <meta name="twitter:image" content="https://stepscribe.app/img/og-image.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <meta name="theme-color" content="#0f0f0f">
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "StepScribe",
+    "description": "AI-powered recovery journaling companion with persistent memory. A private, local app for people in addiction recovery.",
+    "applicationCategory": "HealthApplication",
+    "operatingSystem": "macOS, Windows, Linux",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "author": {
+      "@type": "Organization",
+      "name": "Pixel Space Technologies LLC"
+    },
+    "downloadUrl": "https://github.com/TimKenobi/StepScribe/releases/latest"
+  }
+  </script>
+
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    a { color: #6b8aaf; text-decoration: none; transition: color 0.2s; }
+    a:hover { color: #8fafd4; }
+    img { max-width: 100%; height: auto; display: block; }
+
+    /* ── Utility ── */
+    .container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+    .text-center { text-align: center; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+
+    /* ── Gradient Backgrounds ── */
+    .gradient-radial {
+      position: absolute; width: 600px; height: 600px; border-radius: 50%;
+      filter: blur(120px); opacity: 0.08; pointer-events: none; z-index: 0;
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(10, 10, 10, 0.85); backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    nav .container {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 64px;
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 18px; font-weight: 700; color: #f0f0f0;
+    }
+    .nav-brand .flame { font-size: 24px; }
+    .nav-links { display: flex; align-items: center; gap: 28px; }
+    .nav-links a { color: #b0b0b0; font-size: 14px; font-weight: 500; }
+    .nav-links a:hover { color: #f0f0f0; }
+    .btn-sm {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      background: #6b8aaf; color: #fff; transition: all 0.2s;
+    }
+    .btn-sm:hover { background: #7d9cc1; color: #fff; transform: translateY(-1px); }
+
+    /* ── Hero ── */
+    .hero {
+      position: relative; padding: 160px 0 100px; text-align: center;
+      overflow: hidden;
+    }
+    .hero .gradient-radial {
+      top: -200px; left: 50%; transform: translateX(-50%);
+      background: #6b8aaf;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 16px; border-radius: 99px; font-size: 13px; font-weight: 500;
+      background: rgba(107, 138, 175, 0.1); color: #6b8aaf;
+      border: 1px solid rgba(107, 138, 175, 0.2); margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 64px); font-weight: 800; line-height: 1.1;
+      letter-spacing: -0.03em; max-width: 800px; margin: 0 auto 20px;
+      background: linear-gradient(135deg, #f0f0f0 0%, #b0b0b0 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      font-size: clamp(16px, 2.5vw, 20px); color: #888; max-width: 600px;
+      margin: 0 auto 40px; line-height: 1.7;
+    }
+    .hero-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px; padding: 14px 32px;
+      border-radius: 12px; font-size: 16px; font-weight: 600;
+      background: linear-gradient(135deg, #6b8aaf, #5a7a9f); color: #fff;
+      transition: all 0.3s; box-shadow: 0 4px 24px rgba(107, 138, 175, 0.3);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(107,138,175,0.4); color: #fff; }
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 8px; padding: 14px 32px;
+      border-radius: 12px; font-size: 16px; font-weight: 600;
+      background: rgba(255,255,255,0.05); color: #d0d0d0;
+      border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.2); }
+
+    /* ── Hero Screenshot ── */
+    .hero-screenshot {
+      position: relative; max-width: 900px; margin: 60px auto 0;
+      border-radius: 16px; overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
+    }
+    .hero-screenshot img { width: 100%; border-radius: 16px; }
+    .screenshot-placeholder {
+      width: 100%; aspect-ratio: 16/10; border-radius: 16px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 64px;
+    }
+
+    /* ── Stats bar ── */
+    .stats {
+      padding: 40px 0; border-top: 1px solid rgba(255,255,255,0.04);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .stats .container {
+      display: flex; justify-content: center; gap: 60px; flex-wrap: wrap;
+    }
+    .stat { text-align: center; }
+    .stat-value { font-size: 28px; font-weight: 800; color: #6b8aaf; }
+    .stat-label { font-size: 13px; color: #888; margin-top: 4px; }
+
+    /* ── Features Grid ── */
+    .features { padding: 100px 0; position: relative; }
+    .section-label {
+      display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px;
+      border-radius: 99px; font-size: 12px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: #6b8aaf;
+      background: rgba(107, 138, 175, 0.08); border: 1px solid rgba(107, 138, 175, 0.15);
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: clamp(28px, 4vw, 42px); font-weight: 800; line-height: 1.15;
+      letter-spacing: -0.02em; margin-bottom: 16px; color: #f0f0f0;
+    }
+    .section-subtitle { font-size: 17px; color: #888; max-width: 560px; line-height: 1.7; }
+    .features-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 60px;
+    }
+    .feature-card {
+      padding: 32px; border-radius: 16px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      transition: all 0.3s;
+    }
+    .feature-card:hover {
+      background: rgba(255,255,255,0.04);
+      border-color: rgba(107, 138, 175, 0.2);
+      transform: translateY(-4px);
+    }
+    .feature-icon {
+      width: 48px; height: 48px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center; font-size: 24px;
+      background: rgba(107, 138, 175, 0.1); margin-bottom: 20px;
+    }
+    .feature-card h3 { font-size: 17px; font-weight: 700; margin-bottom: 10px; color: #f0f0f0; }
+    .feature-card p { font-size: 14px; color: #999; line-height: 1.7; }
+
+    /* ── Showcase ── */
+    .showcase { padding: 100px 0; }
+    .showcase-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
+      margin-top: 60px;
+    }
+    .showcase-grid.reverse { direction: rtl; }
+    .showcase-grid.reverse > * { direction: ltr; }
+    .showcase-text h3 { font-size: 28px; font-weight: 700; margin-bottom: 16px; color: #f0f0f0; }
+    .showcase-text p { font-size: 15px; color: #999; line-height: 1.8; margin-bottom: 24px; }
+    .showcase-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .showcase-list li {
+      display: flex; align-items: flex-start; gap: 12px;
+      font-size: 14px; color: #b0b0b0;
+    }
+    .showcase-list .check {
+      width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0;
+      background: rgba(107, 138, 175, 0.15); color: #6b8aaf;
+      display: flex; align-items: center; justify-content: center; font-size: 12px;
+      margin-top: 2px;
+    }
+    .showcase-image {
+      border-radius: 16px; overflow: hidden;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+    }
+    .showcase-image img { width: 100%; border-radius: 16px; }
+    .showcase-placeholder {
+      width: 100%; aspect-ratio: 4/3; border-radius: 16px;
+      display: flex; align-items: center; justify-content: center; font-size: 48px;
+    }
+
+    /* ── Privacy Banner ── */
+    .privacy {
+      padding: 80px 0; position: relative;
+    }
+    .privacy-card {
+      padding: 60px; border-radius: 24px; text-align: center;
+      background: linear-gradient(135deg, rgba(107, 138, 175, 0.06) 0%, rgba(107, 138, 175, 0.02) 100%);
+      border: 1px solid rgba(107, 138, 175, 0.12);
+    }
+    .privacy-card .icon { font-size: 48px; margin-bottom: 24px; }
+    .privacy-card h2 { font-size: 32px; font-weight: 800; margin-bottom: 16px; color: #f0f0f0; }
+    .privacy-card p { font-size: 17px; color: #999; max-width: 600px; margin: 0 auto; line-height: 1.7; }
+    .privacy-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 40px;
+    }
+    .privacy-item { text-align: center; padding: 24px; }
+    .privacy-item .emoji { font-size: 28px; margin-bottom: 12px; }
+    .privacy-item h4 { font-size: 15px; font-weight: 700; color: #e0e0e0; margin-bottom: 6px; }
+    .privacy-item p { font-size: 13px; color: #888; }
+
+    /* ── Download ── */
+    .download { padding: 100px 0; text-align: center; position: relative; }
+    .download .gradient-radial {
+      bottom: -200px; left: 50%; transform: translateX(-50%);
+      background: #6b8aaf;
+    }
+    .download-cards {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+      margin-top: 48px; max-width: 720px; margin-left: auto; margin-right: auto;
+    }
+    .download-card {
+      padding: 28px 20px; border-radius: 16px; text-align: center;
+      background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+      transition: all 0.3s;
+    }
+    .download-card:hover {
+      background: rgba(255,255,255,0.05);
+      border-color: rgba(107, 138, 175, 0.3);
+      transform: translateY(-4px);
+    }
+    .download-card .platform-icon { font-size: 32px; margin-bottom: 12px; }
+    .download-card h4 { font-size: 15px; font-weight: 700; color: #f0f0f0; margin-bottom: 4px; }
+    .download-card p { font-size: 12px; color: #888; margin-bottom: 16px; }
+    .download-card .btn-download {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      background: #6b8aaf; color: #fff; transition: all 0.2s;
+    }
+    .download-card .btn-download:hover { background: #7d9cc1; color: #fff; }
+
+    /* ── Coffee ── */
+    .coffee { padding: 60px 0 100px; text-align: center; }
+    .coffee-card {
+      display: inline-flex; flex-direction: column; align-items: center; gap: 16px;
+      padding: 40px 48px; border-radius: 20px;
+      background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+    }
+    .coffee-card .emoji { font-size: 36px; }
+    .coffee-card p { font-size: 15px; color: #999; max-width: 400px; }
+    .btn-coffee {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600;
+      background: #eab308; color: #0a0a0a; transition: all 0.3s;
+    }
+    .btn-coffee:hover { background: #facc15; color: #0a0a0a; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(234, 179, 8, 0.3); }
+
+    /* ── Footer ── */
+    footer {
+      padding: 40px 0; border-top: 1px solid rgba(255,255,255,0.04);
+      text-align: center;
+    }
+    footer p { font-size: 13px; color: #666; }
+    footer a { color: #888; }
+    footer .footer-links { display: flex; justify-content: center; gap: 24px; margin-bottom: 12px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .nav-links .hide-mobile { display: none; }
+      .features-grid { grid-template-columns: 1fr; }
+      .showcase-grid, .showcase-grid.reverse { grid-template-columns: 1fr; gap: 40px; direction: ltr; }
+      .privacy-grid { grid-template-columns: 1fr; }
+      .download-cards { grid-template-columns: 1fr; max-width: 320px; }
+      .stats .container { gap: 32px; }
+      .hero { padding: 120px 0 60px; }
+      .hero-buttons { flex-direction: column; align-items: center; }
+      .privacy-card { padding: 40px 24px; }
+      .coffee-card { padding: 32px 24px; }
+    }
+    @media (max-width: 480px) {
+      .container { padding: 0 16px; }
+      .hero h1 { font-size: 32px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <div class="container">
+      <a href="/" class="nav-brand">
+        <span class="flame">🔥</span>
+        <span>StepScribe</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features" class="hide-mobile">Features</a>
+        <a href="#privacy" class="hide-mobile">Privacy</a>
+        <a href="#download">
+          <span class="btn-sm">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+          </span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="gradient-radial"></div>
+    <div class="container" style="position: relative; z-index: 1;">
+      <div class="hero-badge">
+        <span>✨</span> Free &amp; Open Source — Your Data Stays Yours
+      </div>
+      <h1>Recovery journaling with an AI that remembers</h1>
+      <p>StepScribe is a private journaling companion for people in recovery. It pairs a beautiful editor with an AI sponsor who learns your story — like a friend who actually listens.</p>
+      <div class="hero-buttons">
+        <a href="#download" class="btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download Free
+        </a>
+        <a href="https://github.com/TimKenobi/StepScribe" class="btn-secondary" target="_blank" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+
+      <div class="hero-screenshot">
+        <!-- Replace with actual screenshot: <img src="/img/hero-screenshot.png" alt="StepScribe app showing journal editor and AI companion" width="1800" height="1125" loading="eager"> -->
+        <div class="screenshot-placeholder" role="img" aria-label="StepScribe app screenshot — replace with actual screenshot">📓</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section class="stats" aria-label="Key stats">
+    <div class="container">
+      <div class="stat">
+        <div class="stat-value">100%</div>
+        <div class="stat-label">Private &amp; Local</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">12</div>
+        <div class="stat-label">Guided Prompts</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">24</div>
+        <div class="stat-label">Built-in Heroes</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">3</div>
+        <div class="stat-label">Platforms</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-label">Features</div>
+      <h2 class="section-title">Everything you need.<br>Nothing you don't.</h2>
+      <p class="section-subtitle">Built for people who take their recovery seriously. No social feeds, no streaks, no guilt — just a quiet place to do the work.</p>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">✍️</div>
+          <h3>Rich Journal Editor</h3>
+          <p>Beautiful rich text with bold, italic, headings, lists, and blockquotes. Voice dictation when you'd rather talk. Attach photos and files.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🧠</div>
+          <h3>AI That Remembers</h3>
+          <p>Your AI sponsor extracts insights from every conversation and entry. It learns your struggles, strengths, triggers, and milestones — and never forgets.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📋</div>
+          <h3>12 Guided Prompts</h3>
+          <p>Morning reflection, step work, resentment inventory, gratitude list, amends preparation, and more. Structure when you need it.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🌤️</div>
+          <h3>Inner Weather</h3>
+          <p>Track your mood with 12 poetic states — from "Storm" to "Clear Skies." See your energy trends over time without pressure.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🛡️</div>
+          <h3>Heroes &amp; Wisdom</h3>
+          <p>24 built-in heroes — saints, writers, philosophers. Daily rotating quotes woven naturally into your AI conversations.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📖</div>
+          <h3>Export Your Story</h3>
+          <p>Export your journal as a beautifully formatted Markdown book. JSON backup and restore. Your words are always yours.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Showcase: AI Sponsor -->
+  <section class="showcase">
+    <div class="container">
+      <div class="showcase-grid">
+        <div class="showcase-text">
+          <div class="section-label">AI Sponsor</div>
+          <h3>A companion who actually listens</h3>
+          <p>StepScribe's AI doesn't just respond to prompts — it builds a living memory of who you are. Your struggles, your breakthroughs, your patterns. Every conversation makes it wiser.</p>
+          <ul class="showcase-list">
+            <li><span class="check">✓</span> Persistent memory across all sessions</li>
+            <li><span class="check">✓</span> Auto-compaction keeps context focused</li>
+            <li><span class="check">✓</span> Adapts to your faith tradition</li>
+            <li><span class="check">✓</span> You control what it knows — view, edit, or delete any memory</li>
+          </ul>
+        </div>
+        <div class="showcase-image">
+          <!-- Replace: <img src="/img/screenshot-sponsor.png" alt="AI Sponsor conversation in StepScribe" width="800" height="600" loading="lazy"> -->
+          <div class="showcase-placeholder" style="background: linear-gradient(135deg, #1a1a2e, #16213e);" role="img" aria-label="AI Sponsor screenshot placeholder">💬</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Showcase: Mood Tracking -->
+  <section class="showcase">
+    <div class="container">
+      <div class="showcase-grid reverse">
+        <div class="showcase-text">
+          <div class="section-label">Inner Weather</div>
+          <h3>No streaks. No pressure.<br>Just showing up.</h3>
+          <p>Track your inner weather with poetic mood states that feel human, not clinical. See your energy trends over the last two weeks. Every day you write is a victory — we never make you feel bad for missing one.</p>
+          <ul class="showcase-list">
+            <li><span class="check">✓</span> 12 weather-inspired mood states</li>
+            <li><span class="check">✓</span> Energy level tracking (1–10)</li>
+            <li><span class="check">✓</span> Calendar view with clickable days</li>
+            <li><span class="check">✓</span> Mood trend visualization</li>
+          </ul>
+        </div>
+        <div class="showcase-image">
+          <!-- Replace: <img src="/img/screenshot-weather.png" alt="Inner Weather mood tracking in StepScribe" width="800" height="600" loading="lazy"> -->
+          <div class="showcase-placeholder" style="background: linear-gradient(135deg, #0f3460, #1a1a2e);" role="img" aria-label="Inner Weather screenshot placeholder">🌤️</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Privacy -->
+  <section class="privacy" id="privacy">
+    <div class="container">
+      <div class="privacy-card">
+        <div class="icon">🔒</div>
+        <h2>Your recovery is nobody's business</h2>
+        <p>StepScribe runs entirely on your computer. No cloud accounts, no telemetry, no data collection. Your journal never leaves your machine.</p>
+        <div class="privacy-grid">
+          <div class="privacy-item">
+            <div class="emoji">💻</div>
+            <h4>Runs Locally</h4>
+            <p>Everything stays on your device. No servers, no accounts.</p>
+          </div>
+          <div class="privacy-item">
+            <div class="emoji">🤖</div>
+            <h4>Local AI with Ollama</h4>
+            <p>Use Ollama for free, private AI. Your words never leave your machine.</p>
+          </div>
+          <div class="privacy-item">
+            <div class="emoji">🔓</div>
+            <h4>Open Source</h4>
+            <p>Every line of code is public on GitHub. Trust, but verify.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download -->
+  <section class="download" id="download">
+    <div class="gradient-radial"></div>
+    <div class="container" style="position: relative; z-index: 1;">
+      <div class="section-label">Download</div>
+      <h2 class="section-title">Get StepScribe</h2>
+      <p class="section-subtitle" style="margin: 0 auto;">Free, open source, and ready in seconds. Just download and launch — no setup required.</p>
+
+      <div class="download-cards">
+        <div class="download-card">
+          <div class="platform-icon">🍎</div>
+          <h4>macOS</h4>
+          <p>Apple Silicon &amp; Intel</p>
+          <a href="https://github.com/TimKenobi/StepScribe/releases/latest" class="btn-download" target="_blank" rel="noopener">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+          </a>
+        </div>
+        <div class="download-card">
+          <div class="platform-icon">🪟</div>
+          <h4>Windows</h4>
+          <p>Windows 10+</p>
+          <a href="https://github.com/TimKenobi/StepScribe/releases/latest" class="btn-download" target="_blank" rel="noopener">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+          </a>
+        </div>
+        <div class="download-card">
+          <div class="platform-icon">🐧</div>
+          <h4>Linux</h4>
+          <p>AppImage &amp; .deb</p>
+          <a href="https://github.com/TimKenobi/StepScribe/releases/latest" class="btn-download" target="_blank" rel="noopener">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+          </a>
+        </div>
+      </div>
+
+      <p style="margin-top: 32px; font-size: 13px; color: #666;">
+        Or self-host with Docker: <code style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 12px; color: #999;">docker compose up -d --build</code>
+      </p>
+    </div>
+  </section>
+
+  <!-- Buy Me a Coffee -->
+  <section class="coffee">
+    <div class="container">
+      <div class="coffee-card">
+        <div class="emoji">☕</div>
+        <h3 style="font-size: 22px; font-weight: 700; color: #f0f0f0;">Support the project</h3>
+        <p>StepScribe is free and always will be. If it's helped your recovery, consider buying the developer a coffee.</p>
+        <a href="https://buymeacoffee.com/timkenobi" class="btn-coffee" target="_blank" rel="noopener">
+          ☕ Buy Me a Coffee
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="footer-links">
+        <a href="https://github.com/TimKenobi/StepScribe" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/TimKenobi/StepScribe/issues" target="_blank" rel="noopener">Report a Bug</a>
+        <a href="https://buymeacoffee.com/timkenobi" target="_blank" rel="noopener">Buy Me a Coffee</a>
+      </div>
+      <p>Made with 🔥 by <a href="https://github.com/TimKenobi" target="_blank" rel="noopener">Pixel Space Technologies LLC</a></p>
+      <p style="margin-top: 8px; font-size: 13px; color: #888;">Released under the <a href="https://github.com/TimKenobi/StepScribe/blob/main/LICENSE" target="_blank" rel="noopener" style="text-decoration: underline;">GPL-3.0 License</a>.</p>
+      <p style="margin-top: 8px; font-size: 12px; color: #555;">StepScribe is not a substitute for professional medical advice, diagnosis, or treatment.</p>
+    </div>
+  </footer>
+
+</body>
+</html>
