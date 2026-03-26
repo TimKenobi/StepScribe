@@ -21,7 +21,7 @@
 
 StepScribe is a private recovery journaling companion designed for people in addiction recovery. It pairs a rich journaling experience with a persistent AI companion that learns about you over time — like a sponsor who actually remembers what you told them last week.
 
-Built with Traditional Catholic sensibility by default, but fully adaptable to any faith tradition or secular approach.
+Inspired by AA's approach — StepScribe doesn't dictate a Higher Power. You define your own faith, heroes, and traditions in your own words.
 
 Available as a **native desktop app** (macOS, Windows, Linux) or as a **self-hosted Docker** deployment.
 
@@ -62,15 +62,16 @@ Available as a **native desktop app** (macOS, Windows, Linux) or as a **self-hos
 - Integrated into journal entries
 
 ### Heroes & Wisdom
-- 24 default heroes (Catholic saints, writers, Stoic philosophers)
+- Add anyone who inspires you — mentors, authors, spiritual figures, philosophers
 - Daily rotating quotes from your heroes
-- Add your own heroes, toggle active/inactive
+- Toggle heroes active/inactive
 - Hero wisdom feeds into AI context
 
 ### Faith & Tradition
-- 11 faith traditions (Traditional Catholic, Orthodox, Protestant, Jewish, Buddhist, Muslim, Stoic, Secular, etc.)
-- Tradition-specific figures and practices
+- Describe your faith and tradition in your own words
+- Free-text input — not a pre-set list
 - Faith context shapes AI personality and language
+- Works for any belief system or secular approach
 
 ### One Day at a Time
 - Calendar view with clickable days
@@ -91,7 +92,7 @@ Available as a **native desktop app** (macOS, Windows, Linux) or as a **self-hos
 - Platform-specific install instructions (macOS, Windows, Linux)
 - Model pulling with streaming progress
 - Model validation endpoint
-- Recommended recovery-focused models (Psychologist, Samantha, Llama 3.3, Qwen 3)
+- Recommended recovery-focused models (Psychologist first, plus Samantha, Llama 3.3, Qwen 3)
 - Custom StepCompanion model creation from Modelfile
 
 ---
@@ -132,16 +133,23 @@ A containerized deployment with Python backend.
 
 ### Option A: Desktop App
 
-Download the latest release for your platform from the [GitHub Releases page](https://github.com/TimKenobi/StepScribe/releases/latest):
-- **macOS**: [`StepScribe-x.x.x-arm64.dmg`](https://github.com/TimKenobi/StepScribe/releases/latest) (Apple Silicon) or [`StepScribe-x.x.x.dmg`](https://github.com/TimKenobi/StepScribe/releases/latest) (Intel)
-- **Windows**: [`StepScribe-Setup-x.x.x.exe`](https://github.com/TimKenobi/StepScribe/releases/latest)
-- **Linux**: [`StepScribe-x.x.x.AppImage`](https://github.com/TimKenobi/StepScribe/releases/latest) or [`.deb`](https://github.com/TimKenobi/StepScribe/releases/latest)
+Download the latest release for your platform from the [GitHub Releases page](https://github.com/TimKenobi/StepScribe/releases):
+
+| Platform | Download | Notes |
+|----------|----------|-------|
+| **macOS (Apple Silicon)** | [`StepScribe-1.0.0-arm64.dmg`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/StepScribe-1.0.0-arm64.dmg) | M1, M2, M3, M4 Macs (2020+) |
+| **macOS (Intel)** | [`StepScribe-1.0.0.dmg`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/StepScribe-1.0.0.dmg) | Pre-2020 Macs with Intel chips |
+| **Windows** | [`StepScribe.Setup.1.0.0.exe`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/StepScribe.Setup.1.0.0.exe) | Windows 10+ (64-bit) |
+| **Linux (AppImage)** | [`StepScribe-1.0.0-arm64.AppImage`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/StepScribe-1.0.0-arm64.AppImage) | ARM64, runs on any distro |
+| **Linux (.deb)** | [`stepscribe-desktop_1.0.0_arm64.deb`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/stepscribe-desktop_1.0.0_arm64.deb) | ARM64, Debian/Ubuntu |
+
+> **Which Mac do I have?** Click  → About This Mac. If "Chip" says "Apple M…" → Apple Silicon. If it says "Intel" → Intel.
 
 Open the app. The onboarding wizard will walk you through:
 1. AI Provider setup (Ollama recommended — free, local, private)
-2. Faith Tradition
-3. About You
-4. Your Heroes
+2. Your faith & tradition (in your own words)
+3. About you
+4. Your heroes (add anyone who inspires you)
 5. Done
 
 ### Option B: Docker (Self-Hosted)
@@ -300,7 +308,7 @@ See [.env.example](.env.example) for all available settings. Key options:
 | `OPENAI_API_KEY` | — | Your OpenAI API key |
 | `ANTHROPIC_API_KEY` | — | Your Anthropic API key |
 | `GROK_API_KEY` | — | Your xAI/Grok API key |
-| `OLLAMA_MODEL` | `llama3` | Which Ollama model to use |
+| `OLLAMA_MODEL` | `ALIENTELLIGENCE/psychologist` | Which Ollama model to use |
 | `BACKEND_PORT` | `8100` | Backend API port |
 | `FRONTEND_PORT` | `3100` | Frontend port |
 
