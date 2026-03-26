@@ -86,7 +86,7 @@ export default function SetupPage() {
   const [installInstructions, setInstallInstructions] = useState<any>(null);
   const [recommendedModels, setRecommendedModels] = useState<any[]>([]);
   const [localModels, setLocalModels] = useState<string[]>([]);
-  const [selectedLocalModel, setSelectedLocalModel] = useState("samantha-mistral");
+  const [selectedLocalModel, setSelectedLocalModel] = useState("alientelligence/psychologist");
   const [pullProgress, setPullProgress] = useState<string>("");
   const [pullPercent, setPullPercent] = useState(0);
   const [pulling, setPulling] = useState(false);
@@ -141,20 +141,12 @@ export default function SetupPage() {
   };
 
   const loadTraditions = async () => {
-    try { setTraditions(await faithApi.traditions()); } catch {}
+    // No pre-filled traditions — users describe their faith in their own words
   };
 
   const loadDefaultHeroes = async () => {
-    try {
-      const defaults = await heroesApi.defaults();
-      setHeroes(defaults.map((h: any) => ({ name: h.name, description: h.description, selected: true })));
-    } catch {
-      setHeroes([
-        { name: "St. Augustine", description: "Doctor of the Church. Wrote the Confessions.", selected: true },
-        { name: "G.K. Chesterton", description: "Catholic convert, writer, and apologist.", selected: true },
-        { name: "Matt Talbot", description: "Patron of addiction recovery.", selected: true },
-      ]);
-    }
+    // No pre-filled heroes — users add their own during setup
+    setHeroes([]);
   };
 
   /* ── Ollama helpers ── */
@@ -307,19 +299,15 @@ export default function SetupPage() {
     setLoading(true);
     try {
       const selectedHeroes = heroes.filter((h) => h.selected).map(({ name, description }) => ({ name, description }));
-      const result = await onboardingApi.complete({
+      await onboardingApi.complete({
         faith_tradition: selectedFaith, faith_notes: faithNotes, about_me: aboutMe, heroes: selectedHeroes,
       });
-      if (result.suggested_figures?.length > 0) {
-        setSuggestedFigures(result.suggested_figures.filter((f: string) => !heroes.some((h) => h.name === f)));
-      }
       setStep(6);
     } catch { setStep(6); }
     finally { setLoading(false); }
   };
 
   const selectedCloudProvider = PROVIDERS.find((p) => p.key === aiProvider);
-  const tradEntries = Object.entries(traditions);
   const needsKey = aiProvider !== "custom";
   const detectedOS = installInstructions?.platform?.toLowerCase() || "macos";
   const osInstructions = installInstructions ? {
@@ -737,36 +725,32 @@ export default function SetupPage() {
           <div>
             <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>Your Faith &amp; Tradition</h2>
             <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
-              This helps your AI companion speak in a way that resonates with you. Pick what feels right, or skip.
+              Describe your faith, spiritual tradition, or philosophy in your own words. This helps your AI companion speak in a way that resonates with you. Like AA, we don&apos;t dictate a higher power — that&apos;s your journey.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6 max-h-80 overflow-y-auto pr-1">
-              {tradEntries.map(([key, trad]) => (
-                <button key={key} onClick={() => setSelectedFaith(key)} className="text-left p-3 rounded-lg border transition-colors"
-                  style={{ borderColor: selectedFaith === key ? "var(--accent)" : "var(--border)", backgroundColor: selectedFaith === key ? "var(--bg-tertiary)" : "var(--bg-secondary)" }}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium" style={{ color: selectedFaith === key ? "var(--accent)" : "var(--text-primary)" }}>{trad.label}</span>
-                    {selectedFaith === key && <Check size={14} style={{ color: "var(--accent)" }} />}
-                  </div>
-                  <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>{trad.description}</p>
-                </button>
-              ))}
+            <div className="mb-4">
+              <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Your tradition (optional)</label>
+              <input value={selectedFaith} onChange={(e) => setSelectedFaith(e.target.value)}
+                placeholder="e.g., Catholic, Buddhist, Stoic, Spiritual but not religious, Secular, etc."
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
             </div>
-            {selectedFaith && (
-              <div className="mb-6">
-                <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Anything else about your faith? (optional)</label>
-                <textarea value={faithNotes} onChange={(e) => setFaithNotes(e.target.value)}
-                  placeholder="e.g., I attend the Traditional Latin Mass, I'm a revert, I pray the Rosary daily..."
-                  rows={2} className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
-                  style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
-              </div>
-            )}
+            <div className="mb-6">
+              <label className="text-xs font-medium block mb-1" style={{ color: "var(--text-muted)" }}>Tell us more (optional)</label>
+              <textarea value={faithNotes} onChange={(e) => setFaithNotes(e.target.value)}
+                placeholder={"Describe your faith, beliefs, practices, or spiritual path in your own words.\n\nFor example:\n- I attend AA meetings and pray to a Higher Power as I understand Him\n- I'm a practicing Buddhist — mindfulness and compassion guide my recovery\n- I'm not religious, but I find meaning in Stoic philosophy and journaling\n- I pray the Rosary daily and find strength in my parish community"}
+                rows={6} className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
+                style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
+            </div>
+            <p className="text-xs mb-6" style={{ color: "var(--text-muted)" }}>
+              This is private and only used to personalize your AI companion. You can update it anytime in Settings.
+            </p>
             <div className="flex gap-3">
               <button onClick={() => setStep(2)} className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
                 <ChevronLeft size={14} /> Back
               </button>
               <button onClick={() => setStep(4)} className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1"
                 style={{ backgroundColor: "var(--accent)", color: "#fff" }}>
-                {selectedFaith ? "Next" : "Skip"} <ChevronRight size={14} />
+                {(selectedFaith || faithNotes.trim()) ? "Next" : "Skip"} <ChevronRight size={14} />
               </button>
             </div>
           </div>
@@ -783,7 +767,7 @@ export default function SetupPage() {
               Tell your AI companion about yourself — your situation, what you&apos;re working on. Like meeting a sponsor for the first time.
             </p>
             <textarea value={aboutMe} onChange={(e) => setAboutMe(e.target.value)}
-              placeholder={`For example:\n- I'm a 35-year-old father of two, working as a carpenter\n- I struggle with alcohol — sober 6 months now\n- I attend the Traditional Latin Mass\n- My biggest triggers are stress at work and loneliness\n- I pray the Rosary daily and it helps me stay grounded`}
+              placeholder={`For example:\n- I'm a 35-year-old father of two, working as a carpenter\n- I struggle with alcohol — sober 6 months now\n- My biggest triggers are stress at work and loneliness\n- I find strength in my morning routine and journaling\n- I'm working Step 4 with my sponsor right now`}
               rows={8} className="w-full px-4 py-3 rounded-lg text-sm outline-none resize-none leading-relaxed"
               style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
             <p className="text-xs mt-2 mb-6" style={{ color: "var(--text-muted)" }}>
@@ -806,24 +790,35 @@ export default function SetupPage() {
           <div>
             <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>Your Heroes</h2>
             <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
-              People whose character you want to emulate. Their wisdom will appear in your journal and guide your AI companion.
+              Add people whose character you want to emulate — anyone who inspires you. Their wisdom will appear in your journal and guide your AI companion. You can always add more later.
             </p>
-            <div className="space-y-2 mb-4 max-h-64 overflow-y-auto pr-1">
-              {heroes.map((hero, i) => (
-                <button key={i} onClick={() => toggleHero(i)}
-                  className="w-full text-left flex items-center gap-3 p-3 rounded-lg border transition-colors"
-                  style={{ borderColor: hero.selected ? "var(--accent)" : "var(--border)", backgroundColor: hero.selected ? "var(--bg-tertiary)" : "var(--bg-secondary)", opacity: hero.selected ? 1 : 0.75 }}>
-                  <div className="w-5 h-5 rounded flex-shrink-0 flex items-center justify-center"
-                    style={{ border: `1px solid ${hero.selected ? "var(--accent)" : "var(--border)"}` }}>
-                    {hero.selected && <Check size={12} style={{ color: "var(--accent)" }} />}
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{hero.name}</div>
-                    {hero.description && <p className="text-xs" style={{ color: "var(--text-muted)" }}>{hero.description}</p>}
-                  </div>
-                </button>
-              ))}
-            </div>
+            {heroes.length > 0 && (
+              <div className="space-y-2 mb-4 max-h-64 overflow-y-auto pr-1">
+                {heroes.map((hero, i) => (
+                  <button key={i} onClick={() => toggleHero(i)}
+                    className="w-full text-left flex items-center gap-3 p-3 rounded-lg border transition-colors"
+                    style={{ borderColor: hero.selected ? "var(--accent)" : "var(--border)", backgroundColor: hero.selected ? "var(--bg-tertiary)" : "var(--bg-secondary)", opacity: hero.selected ? 1 : 0.75 }}>
+                    <div className="w-5 h-5 rounded flex-shrink-0 flex items-center justify-center"
+                      style={{ border: `1px solid ${hero.selected ? "var(--accent)" : "var(--border)"}` }}>
+                      {hero.selected && <Check size={12} style={{ color: "var(--accent)" }} />}
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{hero.name}</div>
+                      {hero.description && <p className="text-xs" style={{ color: "var(--text-muted)" }}>{hero.description}</p>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {heroes.length === 0 && (
+              <div className="mb-4 p-6 rounded-lg border text-center" style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}>
+                <User size={32} className="mx-auto mb-3" style={{ color: "var(--text-muted)" }} />
+                <p className="text-sm mb-1" style={{ color: "var(--text-secondary)" }}>No heroes added yet</p>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Add anyone who inspires you — a mentor, author, spiritual figure, historical leader, family member, or anyone whose character you admire.
+                </p>
+              </div>
+            )}
             <div className="flex gap-2 mb-6">
               <input type="text" value={customHero} onChange={(e) => setCustomHero(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && addCustomHero()} placeholder="Add a hero..."
@@ -895,23 +890,6 @@ export default function SetupPage() {
             <p className="text-xs mb-8 max-w-xs mx-auto" style={{ color: "var(--text-muted)" }}>
               Everything is saved securely. You can update your preferences, heroes, or AI settings anytime from the menu.
             </p>
-
-            {suggestedFigures.length > 0 && (
-              <div className="mb-8 p-5 rounded-2xl border text-left" style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}>
-                <p className="text-xs font-medium mb-3 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
-                  <Flame size={14} /> Suggested figures from your tradition:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {suggestedFigures.map((name) => (
-                    <button key={name} onClick={() => addSuggestedFigure(name)}
-                      className="px-4 py-1.5 rounded-full text-xs font-medium transition-all hover:scale-105"
-                      style={{ backgroundColor: "var(--bg-tertiary)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
-                      + {name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <button onClick={() => router.push("/")}
               className="px-10 py-4 rounded-2xl text-base font-semibold inline-flex items-center gap-3 shadow-lg hover:shadow-xl transition-all active:scale-[0.985]"

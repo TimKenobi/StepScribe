@@ -1,76 +1,11 @@
 /**
- * Shared model data — faith traditions, mood weather, default heroes, etc.
- * Port of Python models.py data constants.
+ * Shared model data — mood weather, memory categories, recommended models, etc.
+ * Users define their own faith/tradition and heroes during setup — we don't dictate.
  */
 
-const FAITH_TRADITIONS = {
-  traditional_catholic: {
-    label: "Traditional Catholic",
-    description: "Latin Mass, devotion to the Saints, Rosary, sacramental life.",
-    figures: ["St. Thomas Aquinas", "St. Augustine", "St. Thérèse of Lisieux", "St. Padre Pio", "Our Lady"],
-    practices: ["Daily Rosary", "Examination of Conscience", "Confession", "Eucharistic Adoration", "Liturgy of the Hours"],
-  },
-  roman_catholic: {
-    label: "Roman Catholic",
-    description: "Novus Ordo, parish life, social teaching, sacraments.",
-    figures: ["St. Francis of Assisi", "St. Teresa of Calcutta", "St. John Paul II", "St. Ignatius of Loyola"],
-    practices: ["Mass", "Rosary", "Lectio Divina", "Works of Mercy", "Confession"],
-  },
-  eastern_orthodox: {
-    label: "Eastern Orthodox",
-    description: "Divine Liturgy, icons, the Jesus Prayer, theosis.",
-    figures: ["St. John Chrysostom", "St. Seraphim of Sarov", "St. Theophan the Recluse"],
-    practices: ["Jesus Prayer", "Fasting", "Divine Liturgy", "Icon veneration", "Confession"],
-  },
-  protestant: {
-    label: "Protestant / Evangelical",
-    description: "Scripture-centered, personal relationship with Christ, community.",
-    figures: ["Dietrich Bonhoeffer", "C.S. Lewis", "Charles Spurgeon", "Corrie ten Boom"],
-    practices: ["Bible study", "Prayer", "Worship", "Small groups", "Devotionals"],
-  },
-  jewish: {
-    label: "Jewish",
-    description: "Torah, Talmud, mitzvot, the rhythm of Shabbat and holy days.",
-    figures: ["Rabbi Nachman of Breslov", "Maimonides", "Viktor Frankl", "Abraham Joshua Heschel"],
-    practices: ["Shabbat", "Torah study", "Prayer", "Tikkun olam", "Musar"],
-  },
-  buddhist: {
-    label: "Buddhist",
-    description: "The Eightfold Path, mindfulness, compassion, letting go of attachment.",
-    figures: ["Thich Nhat Hanh", "Pema Chödrön", "The Dalai Lama", "Shunryu Suzuki"],
-    practices: ["Meditation", "Mindfulness", "Right speech", "Loving-kindness", "Sangha"],
-  },
-  muslim: {
-    label: "Muslim",
-    description: "The Five Pillars, Quran, surrender to God, community (ummah).",
-    figures: ["Rumi", "Imam al-Ghazali", "Malcolm X"],
-    practices: ["Salah (prayer)", "Quran recitation", "Dhikr", "Fasting", "Charity"],
-  },
-  stoic_philosophical: {
-    label: "Stoic / Philosophical",
-    description: "Virtue ethics, focus on what you can control, rational self-examination.",
-    figures: ["Marcus Aurelius", "Epictetus", "Seneca", "Viktor Frankl"],
-    practices: ["Morning reflection", "Evening review", "Negative visualization", "Journaling", "Memento mori"],
-  },
-  spiritual_not_religious: {
-    label: "Spiritual but Not Religious",
-    description: "Higher Power as you understand it. The 12-step tradition of open spirituality.",
-    figures: ["Bill W.", "Carl Jung", "Joseph Campbell", "Ram Dass"],
-    practices: ["Meditation", "Gratitude", "Prayer to Higher Power", "Service", "Step work"],
-  },
-  secular: {
-    label: "Secular / Non-Religious",
-    description: "Recovery through reason, community, personal responsibility, and human connection.",
-    figures: ["Albert Camus", "Viktor Frankl", "Brené Brown", "Jordan Peterson"],
-    practices: ["Journaling", "Cognitive reframing", "Community service", "Self-reflection", "Rational self-analysis"],
-  },
-  other: {
-    label: "Other",
-    description: "A tradition not listed here. You can describe it and the AI will adapt.",
-    figures: [],
-    practices: [],
-  },
-};
+// No pre-filled faith traditions. Like AA, we don't dictate a higher power.
+// Users describe their faith, spiritual tradition, or philosophy in their own words.
+const FAITH_TRADITIONS = {};
 
 const MOOD_WEATHER = {
   radiant: { label: "Radiant", description: "Glowing. Everything feels alive and beautiful.", intensity: 10 },
@@ -91,32 +26,8 @@ const MOOD_WEATHER = {
   dawn_breaking: { label: "Dawn Breaking", description: "Coming through darkness. Light is returning.", intensity: 7 },
 };
 
-const DEFAULT_HEROES = [
-  { name: "St. Augustine", description: "Bishop of Hippo, convert, Doctor of the Church. Wrote the Confessions — the original recovery story. 'Our hearts are restless until they rest in Thee.'" },
-  { name: "St. Thomas Aquinas", description: "The Angelic Doctor. Synthesized faith and reason. Proved that thinking deeply and believing deeply are not opposites." },
-  { name: "St. Padre Pio", description: "Capuchin friar, mystic, bearer of the stigmata. Knew suffering intimately and turned it into intercession. 'Pray, hope, and don't worry.'" },
-  { name: "St. Francis de Sales", description: "Bishop of Geneva, Doctor of the Church. Wrote Introduction to the Devout Life — practical holiness for ordinary people living in the world." },
-  { name: "St. John of the Cross", description: "Carmelite mystic and Doctor of the Church. The Dark Night of the Soul is the recovery journey in mystical language — purification through darkness." },
-  { name: "Matt Talbot", description: "Dublin laborer, severe alcoholic, converted at 28. Lived 40+ years of heroic penance and prayer. Patron of addiction recovery." },
-  { name: "J.R.R. Tolkien", description: "Devout Catholic. Called The Lord of the Rings 'a fundamentally religious and Catholic work.' Credited the Blessed Sacrament for everything good in his writing and life." },
-  { name: "G.K. Chesterton", description: "Catholic convert, writer, and apologist. Believed that gratitude is the highest form of thought, and that wonder is the beginning of wisdom." },
-  { name: "Hilaire Belloc", description: "Catholic historian, essayist, and poet. Fierce defender of the Faith. 'The Faith is Europe, and Europe is the Faith.'" },
-  { name: "Peter Kreeft", description: "Catholic philosopher at Boston College. Modern-day Socrates — makes ancient wisdom accessible and alive. Convert from Calvinism." },
-  { name: "Fulton Sheen", description: "Archbishop, television evangelist, Servant of God. Could explain the deepest theology in language anyone could understand. Master of the examined life." },
-  { name: "Flannery O'Connor", description: "Catholic fiction writer. Grace in the grotesque. Unflinching honesty about human nature and the violent mercy of God." },
-  { name: "Scott Weeman", description: "Founder of Catholics in Recovery. Bridges the 12 Steps and the Sacraments. Living proof that the Church and recovery work together." },
-  { name: "Blaise Pascal", description: "Mathematician, physicist, Catholic philosopher. The Pensées are fragments of brilliance on faith, reason, and the human condition." },
-  { name: "Fr. Walter Ciszek, SJ", description: "American Jesuit imprisoned in Soviet gulags for 23 years. Wrote He Leadeth Me — ultimate trust in God under unbearable pressure." },
-  { name: "Jacques Philippe", description: "French priest and spiritual writer. Interior Freedom and Searching for and Maintaining Peace — deeply practical Catholic wisdom for the interior life." },
-  { name: "Dom Prosper Guéranger", description: "Restorer of Benedictine monastic life in France. Champion of the traditional liturgy. Founded Solesmes Abbey." },
-  { name: "Archbishop Marcel Lefebvre", description: "Founder of the SSPX. Stood firm for Tradition when the world moved on. 'We must keep the Faith.'" },
-  { name: "C.S. Lewis", description: "Anglican author and apologist. Close friend of Tolkien. Wrote honestly about grief, faith, and the painful process of becoming who you're meant to be." },
-  { name: "Marcus Aurelius", description: "Roman Emperor and Stoic philosopher. Wrote Meditations as a private journal — reminders to himself about what matters and what doesn't." },
-  { name: "Epictetus", description: "Born a slave, became a great Stoic teacher. Core teaching: focus only on what you can control — your thoughts, your choices, your responses." },
-  { name: "Seneca", description: "Stoic philosopher and statesman. Wrote about anger, grief, and the shortness of life with unflinching honesty and practical wisdom." },
-  { name: "Viktor Frankl", description: "Holocaust survivor. Man's Search for Meaning — found purpose inside suffering. 'He who has a why to live can bear almost any how.'" },
-  { name: "Aleksandr Solzhenitsyn", description: "Russian Nobel laureate. Survived the Gulag. 'The line between good and evil runs through every human heart.'" },
-];
+// No pre-filled heroes. Users add their own heroes — people whose character they want to emulate.
+const DEFAULT_HEROES = [];
 
 const MEMORY_CATEGORIES = [
   "struggle", "strength", "pattern", "relationship", "trigger",
@@ -124,14 +35,14 @@ const MEMORY_CATEGORIES = [
 ];
 
 const RECOMMENDED_MODELS = {
+  "alientelligence/psychologist": {
+    name: "alientelligence/psychologist", label: "Psychologist (ALIENTELLIGENCE)",
+    description: "Designed for therapeutic-style conversations. Understands mental health context. Recommended for recovery journaling.",
+    size: "~4.1 GB", parameters: "7B",
+  },
   "samantha-mistral": {
     name: "samantha-mistral", label: "Samantha (Mistral-based)",
     description: "Empathetic, conversational AI assistant. Great for journaling and emotional support.",
-    size: "~4.1 GB", parameters: "7B",
-  },
-  "alientelligence/psychologist": {
-    name: "alientelligence/psychologist", label: "Psychologist (ALIENTELLIGENCE)",
-    description: "Designed for therapeutic-style conversations. Understands mental health context.",
     size: "~4.1 GB", parameters: "7B",
   },
   "llama3.3": {

@@ -158,6 +158,18 @@
     .privacy-item h4{font-size:15px;font-weight:700;color:#e0e0e0;margin-bottom:6px}
     .privacy-item p{font-size:13px;color:#888}
 
+    /* System Requirements */
+    .requirements{padding:80px 0;position:relative}
+    .requirements-card{padding:48px;border-radius:20px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06)}
+    .requirements-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:32px}
+    .req-column h4{font-size:16px;font-weight:700;color:#f0f0f0;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+    .req-column ul{list-style:none;display:flex;flex-direction:column;gap:10px}
+    .req-column li{font-size:14px;color:#b0b0b0;display:flex;align-items:flex-start;gap:10px}
+    .req-column li .dot{width:6px;height:6px;border-radius:50%;background:#6b8aaf;flex-shrink:0;margin-top:7px}
+    .req-note{margin-top:24px;padding:16px;border-radius:12px;background:rgba(107,138,175,.06);border:1px solid rgba(107,138,175,.1)}
+    .req-note p{font-size:13px;color:#999;line-height:1.6}
+    @media(max-width:768px){.requirements-grid{grid-template-columns:1fr}}
+
     /* Download */
     .download{padding:100px 0;text-align:center;position:relative}
     .download .glow-blue{bottom:-200px;left:50%}
@@ -284,7 +296,7 @@
     <div class="container">
       <div class="stat"><div class="stat-value">100%</div><div class="stat-label">Private &amp; Local</div></div>
       <div class="stat"><div class="stat-value">12</div><div class="stat-label">Guided Prompts</div></div>
-      <div class="stat"><div class="stat-value">24</div><div class="stat-label">Built-in Heroes</div></div>
+      <div class="stat"><div class="stat-value">∞</div><div class="stat-label">Your Heroes</div></div>
       <div class="stat"><div class="stat-value">3</div><div class="stat-label">Platforms</div></div>
     </div>
   </section>
@@ -304,7 +316,7 @@
         <article class="feature-card reveal reveal-delay-2"><div class="feature-icon">🧠</div><h3>AI That Remembers</h3><p>Your AI sponsor extracts insights from every conversation and entry. It learns your struggles, strengths, triggers, and milestones — and never forgets.</p></article>
         <article class="feature-card reveal reveal-delay-3"><div class="feature-icon">📋</div><h3>12 Guided Prompts</h3><p>Morning reflection, step work, resentment inventory, gratitude list, amends preparation, and more. Structure when you need it.</p></article>
         <article class="feature-card reveal reveal-delay-1"><div class="feature-icon">🌤️</div><h3>Inner Weather</h3><p>Track your mood with 12 poetic states — from "Storm" to "Clear Skies." See your energy trends over time without pressure.</p></article>
-        <article class="feature-card reveal reveal-delay-2"><div class="feature-icon">🛡️</div><h3>Heroes &amp; Wisdom</h3><p>24 built-in heroes — saints, writers, philosophers. Daily rotating quotes woven naturally into your AI conversations.</p></article>
+        <article class="feature-card reveal reveal-delay-2"><div class="feature-icon">🛡️</div><h3>Heroes &amp; Wisdom</h3><p>Add anyone who inspires you — mentors, authors, spiritual figures, philosophers. Their wisdom weaves naturally into your AI conversations.</p></article>
         <article class="feature-card reveal reveal-delay-3"><div class="feature-icon">📖</div><h3>Export Your Story</h3><p>Export your journal as a beautifully formatted Markdown book. JSON backup and restore. Your words are always yours.</p></article>
       </div>
     </div>
@@ -320,7 +332,7 @@
           <ul class="showcase-list">
             <li><span class="check">&#10003;</span> Persistent memory across all sessions</li>
             <li><span class="check">&#10003;</span> Auto-compaction keeps context focused</li>
-            <li><span class="check">&#10003;</span> Adapts to your faith tradition</li>
+            <li><span class="check">&#10003;</span> Adapts to your faith and tradition — in your own words</li>
             <li><span class="check">&#10003;</span> You control what it knows — view, edit, or delete any memory</li>
           </ul>
         </div>
@@ -363,6 +375,39 @@
           <div class="privacy-item reveal reveal-delay-1"><div class="emoji">💻</div><h4>Runs Locally</h4><p>Everything stays on your device. No servers, no accounts.</p></div>
           <div class="privacy-item reveal reveal-delay-2"><div class="emoji">🤖</div><h4>Local AI with Ollama</h4><p>Use Ollama for free, private AI. Your words never leave your machine.</p></div>
           <div class="privacy-item reveal reveal-delay-3"><div class="emoji">🔓</div><h4>Open Source</h4><p>Every line of code is public on GitHub. Trust, but verify.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="requirements" id="requirements">
+    <div class="container">
+      <div class="requirements-card reveal">
+        <div class="section-label">Requirements</div>
+        <h2 class="section-title">System Requirements</h2>
+        <p class="section-subtitle">StepScribe runs on any modern computer. Local AI is optional but recommended for full privacy.</p>
+        <div class="requirements-grid">
+          <div class="req-column">
+            <h4>💻 StepScribe App</h4>
+            <ul>
+              <li><span class="dot"></span> macOS 11+ (Apple Silicon &amp; Intel), Windows 10+, or Linux (Ubuntu 20.04+)</li>
+              <li><span class="dot"></span> 4 GB RAM minimum</li>
+              <li><span class="dot"></span> 500 MB disk space for the app</li>
+              <li><span class="dot"></span> No internet required (except for cloud AI)</li>
+            </ul>
+          </div>
+          <div class="req-column">
+            <h4>🤖 Local AI (Ollama)</h4>
+            <ul>
+              <li><span class="dot"></span> <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a> installed (free, open source)</li>
+              <li><span class="dot"></span> 8 GB RAM minimum (16 GB recommended)</li>
+              <li><span class="dot"></span> 5 GB disk space per AI model</li>
+              <li><span class="dot"></span> Recommended: <strong>Psychologist</strong> by ALIENTELLIGENCE</li>
+            </ul>
+          </div>
+        </div>
+        <div class="req-note">
+          <p>💡 <strong>Don't want to run AI locally?</strong> StepScribe also works with cloud providers — Grok (xAI), OpenAI, Anthropic, or any OpenAI-compatible endpoint. Just bring your API key.</p>
         </div>
       </div>
     </div>

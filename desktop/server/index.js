@@ -189,27 +189,7 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
 
   app.get("/api/heroes/", asyncHandler(async (req, res) => {
     const { user_id = "default" } = req.query;
-    let heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 ORDER BY sort_order", [user_id]);
-    if (!heroes.length) {
-      const client = await getClient();
-      try {
-        await client.query("BEGIN");
-        for (let i = 0; i < DEFAULT_HEROES.length; i++) {
-          const h = DEFAULT_HEROES[i];
-          await client.query(
-            "INSERT INTO user_heroes (id, user_id, name, description, is_active, sort_order) VALUES ($1, $2, $3, $4, TRUE, $5)",
-            [uuid(), user_id, h.name, h.description, i]
-          );
-        }
-        await client.query("COMMIT");
-      } catch (err) {
-        await client.query("ROLLBACK");
-        throw err;
-      } finally {
-        client.release();
-      }
-      heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 ORDER BY sort_order", [user_id]);
-    }
+    const heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 ORDER BY sort_order", [user_id]);
     res.json(heroes.map(h => ({ ...h, is_active: !!h.is_active })));
   }));
 
@@ -239,32 +219,27 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
   // ══════════════════════════════════════
   // Faith
   // ══════════════════════════════════════
+  // No pre-filled traditions — users describe their faith in their own words
   app.get("/api/faith/traditions", (req, res) => {
-    const out = {};
-    for (const [k, v] of Object.entries(FAITH_TRADITIONS)) {
-      out[k] = { label: v.label, description: v.description };
-    }
-    res.json(out);
+    res.json({});
   });
 
   app.get("/api/faith/", asyncHandler(async (req, res) => {
     const { user_id = "default" } = req.query;
     const prefs = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [user_id]);
-    if (!prefs || !prefs.faith_tradition) return res.json(null);
-    const t = FAITH_TRADITIONS[prefs.faith_tradition] || FAITH_TRADITIONS.other;
+    if (!prefs || (!prefs.faith_tradition && !prefs.faith_notes)) return res.json(null);
     res.json({
-      faith_tradition: prefs.faith_tradition,
-      faith_notes: prefs.faith_notes,
-      tradition_label: t.label,
-      tradition_description: t.description,
-      figures: t.figures || [],
-      practices: t.practices || [],
+      faith_tradition: prefs.faith_tradition || "",
+      faith_notes: prefs.faith_notes || "",
+      tradition_label: prefs.faith_tradition || "",
+      tradition_description: prefs.faith_notes || "",
+      figures: [],
+      practices: [],
     });
   }));
 
   app.put("/api/faith/", asyncHandler(async (req, res) => {
-    const { user_id = "default", faith_tradition, faith_notes = "" } = req.body;
-    if (faith_tradition && !FAITH_TRADITIONS[faith_tradition]) return res.status(400).json({ detail: "Unknown tradition" });
+    const { user_id = "default", faith_tradition = "", faith_notes = "" } = req.body;
     const existing = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [user_id]);
     if (existing) {
       await run("UPDATE user_preferences SET faith_tradition = $1, faith_notes = $2, updated_at = $3 WHERE user_id = $4",
@@ -273,8 +248,7 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
       await run("INSERT INTO user_preferences (id, user_id, faith_tradition, faith_notes) VALUES ($1, $2, $3, $4)",
         [uuid(), user_id, faith_tradition, faith_notes]);
     }
-    const t = FAITH_TRADITIONS[faith_tradition] || FAITH_TRADITIONS.other;
-    res.json({ faith_tradition, tradition_label: t.label, saved: true });
+    res.json({ faith_tradition, tradition_label: faith_tradition, saved: true });
   }));
 
   // ══════════════════════════════════════
@@ -286,11 +260,10 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
     const heroRow = await getOne("SELECT COUNT(*) as cnt FROM user_heroes WHERE user_id = $1 AND is_active = TRUE", [user_id]);
     const heroCount = heroRow?.cnt || 0;
     if (!prefs) return res.json({ onboarding_complete: false, faith_tradition: "", faith_label: "", hero_count: parseInt(heroCount) });
-    const t = FAITH_TRADITIONS[prefs.faith_tradition] || {};
     res.json({
       onboarding_complete: !!prefs.onboarding_complete,
       faith_tradition: prefs.faith_tradition || "",
-      faith_label: t.label || "",
+      faith_label: prefs.faith_tradition || "",
       hero_count: parseInt(heroCount),
     });
   }));
@@ -345,7 +318,7 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
       await run("INSERT INTO ai_memories (id, user_id, category, content, source) VALUES ($1, $2, 'preference', $3, 'onboarding')",
         [uuid(), user_id, `Faith background: ${faith_notes.trim()}`]);
     }
-    const t = FAITH_TRADITIONS[faith_tradition] || {};
+    const t = {};
     res.json({ onboarding_complete: true, suggested_figures: t.figures || [], suggested_practices: t.practices || [] });
   }));
 

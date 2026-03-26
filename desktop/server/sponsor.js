@@ -3,8 +3,6 @@
  * Port of Python sponsor_guidelines.py.
  */
 
-const { FAITH_TRADITIONS } = require("./models");
-
 const SYSTEM_PROMPT = `You are a wise, compassionate companion for someone on a recovery and \
 self-improvement journey. You draw on the traditions of 12-step programs, Stoic philosophy, \
 and the wisdom of great thinkers.
@@ -116,15 +114,10 @@ function getSystemPromptWithHeroes(heroNames = [], faithTradition = "", faithNot
   if (heroNames.length) {
     extra += `\n\nThe person you're talking to draws inspiration from: ${heroNames.join(", ")}. When it fits naturally, reference the wisdom, stories, or character of these figures. Don't force it — only bring them up when it genuinely serves the moment.`;
   }
-  if (faithTradition) {
-    const tradition = FAITH_TRADITIONS[faithTradition] || {};
-    const label = tradition.label || faithTradition;
-    const figures = tradition.figures || [];
-    const practices = tradition.practices || [];
-    extra += `\n\nThis person identifies as ${label}. Respect this deeply. When appropriate, you may draw on the language, wisdom, and spiritual practices of this tradition — but never preach, never lecture, and never assume you know their relationship with their faith better than they do.`;
-    if (figures.length) extra += ` Saints and figures in this tradition include: ${figures.join(", ")}.`;
-    if (practices.length) extra += ` Practices they may find meaningful: ${practices.join(", ")}.`;
-    if (faithNotes) extra += ` They've shared this about their faith: "${faithNotes}"`;
+  if (faithNotes?.trim()) {
+    extra += `\n\nThis person has shared about their faith, spiritual tradition, or philosophy: "${faithNotes.trim()}". Respect this deeply. When appropriate, you may draw on the language, wisdom, and practices they describe — but never preach, never lecture, and never assume you know their relationship with their faith better than they do.`;
+  } else if (faithTradition?.trim()) {
+    extra += `\n\nThis person identifies their faith or tradition as: "${faithTradition.trim()}". Respect this deeply. When appropriate, you may draw on the language and wisdom of this tradition — but never preach, never lecture, and never assume you know their relationship with their faith better than they do.`;
   }
   return SYSTEM_PROMPT + extra;
 }
