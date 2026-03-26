@@ -3,16 +3,16 @@ services:
     image: postgres:17-alpine
     container_name: stepscribe-db
     environment:
-      POSTGRES_USER: stepscribe
-      POSTGRES_PASSWORD: stepscribe
-      POSTGRES_DB: stepscribe
+      POSTGRES_USER: ${POSTGRES_USER:-stepscribe}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stepscribe}
+      POSTGRES_DB: ${POSTGRES_DB:-stepscribe}
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - stepscribe-pgdata:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U stepscribe"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stepscribe}"]
       interval: 10s
       timeout: 5s
       retries: 5

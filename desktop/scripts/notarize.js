@@ -15,11 +15,16 @@ exports.default = async function notarizing(context) {
   // Skip if no credentials are set
   const appleId = process.env.APPLE_ID;
   const applePassword = process.env.APPLE_APP_SPECIFIC_PASSWORD;
-  const teamId = process.env.APPLE_TEAM_ID || "X3H9P4VWQ7";
+  const teamId = process.env.APPLE_TEAM_ID;
   const keychainProfile = process.env.APPLE_KEYCHAIN_PROFILE;
 
   if (!keychainProfile && (!appleId || !applePassword)) {
     console.log("⚠ Skipping notarization — set APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD or APPLE_KEYCHAIN_PROFILE");
+    return;
+  }
+
+  if (!keychainProfile && !teamId) {
+    console.log("⚠ Skipping notarization — set APPLE_TEAM_ID");
     return;
   }
 
