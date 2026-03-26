@@ -1,6 +1,23 @@
 # StepScribe
 
-**AI-powered recovery journaling — one step at a time.**
+<p align="center">
+  <img src="website/img/logo.png" alt="StepScribe Logo" width="280">
+</p>
+
+<p align="center">
+  <strong>AI-powered recovery journaling — one step at a time.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/TimKenobi/StepScribe/releases/latest">📥 Download</a> &nbsp;·&nbsp;
+  <a href="https://stepscribe.org">🌐 Website</a> &nbsp;·&nbsp;
+  <a href="https://buymeacoffee.com/timkenobi">☕ Buy Me a Coffee</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/TimKenobi/StepScribe/releases/latest"><img src="https://img.shields.io/github/v/release/TimKenobi/StepScribe?style=flat-square&color=6b8aaf" alt="Latest Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square" alt="License: GPL-3.0"></a>
+</p>
 
 StepScribe is a private recovery journaling companion designed for people in addiction recovery. It pairs a rich journaling experience with a persistent AI companion that learns about you over time — like a sponsor who actually remembers what you told them last week.
 
@@ -115,10 +132,10 @@ A containerized deployment with Python backend.
 
 ### Option A: Desktop App
 
-Download the latest release for your platform:
-- **macOS**: `StepScribe-x.x.x-arm64.dmg` (Apple Silicon) or `StepScribe-x.x.x.dmg` (Intel)
-- **Windows**: `StepScribe-Setup-x.x.x.exe`
-- **Linux**: `StepScribe-x.x.x.AppImage` or `.deb`
+Download the latest release for your platform from the [GitHub Releases page](https://github.com/TimKenobi/StepScribe/releases/latest):
+- **macOS**: [`StepScribe-x.x.x-arm64.dmg`](https://github.com/TimKenobi/StepScribe/releases/latest) (Apple Silicon) or [`StepScribe-x.x.x.dmg`](https://github.com/TimKenobi/StepScribe/releases/latest) (Intel)
+- **Windows**: [`StepScribe-Setup-x.x.x.exe`](https://github.com/TimKenobi/StepScribe/releases/latest)
+- **Linux**: [`StepScribe-x.x.x.AppImage`](https://github.com/TimKenobi/StepScribe/releases/latest) or [`.deb`](https://github.com/TimKenobi/StepScribe/releases/latest)
 
 Open the app. The onboarding wizard will walk you through:
 1. AI Provider setup (Ollama recommended — free, local, private)
@@ -303,4 +320,14 @@ See [.env.example](.env.example) for all available settings. Key options:
 
 ## License
 
-Private project. All rights reserved.
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
+
+---
+
+## Support
+
+If StepScribe has helped your recovery, consider supporting the project:
+
+<a href="https://buymeacoffee.com/timkenobi"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-eab308?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee"></a>
+
+Visit the website at [stepscribe.org](https://stepscribe.org).
