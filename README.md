@@ -140,8 +140,10 @@ Download the latest release for your platform from the [GitHub Releases page](ht
 | **macOS (Apple Silicon)** | [`StepScribe-1.0.0-arm64.dmg`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/StepScribe-1.0.0-arm64.dmg) | M1, M2, M3, M4 Macs (2020+) |
 | **macOS (Intel)** | [`StepScribe-1.0.0.dmg`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/StepScribe-1.0.0.dmg) | Pre-2020 Macs with Intel chips |
 | **Windows** | [`StepScribe.Setup.1.0.0.exe`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/StepScribe.Setup.1.0.0.exe) | Windows 10+ (64-bit) |
-| **Linux (AppImage)** | [`StepScribe-1.0.0-arm64.AppImage`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/StepScribe-1.0.0-arm64.AppImage) | ARM64, runs on any distro |
-| **Linux (.deb)** | [`stepscribe-desktop_1.0.0_arm64.deb`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/stepscribe-desktop_1.0.0_arm64.deb) | ARM64, Debian/Ubuntu |
+| **Linux (AppImage)** | [`StepScribe-1.0.0.AppImage`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/StepScribe-1.0.0.AppImage) | x86_64, runs on any distro |
+| **Linux (.deb)** | [`stepscribe-desktop_1.0.0_amd64.deb`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/stepscribe-desktop_1.0.0_amd64.deb) | x86_64, Debian/Ubuntu |
+| **Linux (AppImage, ARM64)** | [`StepScribe-1.0.0-arm64.AppImage`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/StepScribe-1.0.0-arm64.AppImage) | ARM64, runs on any distro |
+| **Linux (.deb, ARM64)** | [`stepscribe-desktop_1.0.0_arm64.deb`](https://github.com/TimKenobi/StepScribe/releases/download/v1.0.0/stepscribe-desktop_1.0.0_arm64.deb) | ARM64, Debian/Ubuntu |
 
 > **Which Mac do I have?** Click  → About This Mac. If "Chip" says "Apple M…" → Apple Silicon. If it says "Intel" → Intel.
 

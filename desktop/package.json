@@ -17,7 +17,7 @@
     "build:win": "npm run build:frontend && electron-builder --win",
     "build:mac-dmg": "npm run build:frontend && electron-builder --mac dmg --arm64 --x64",
     "build:mac-unsigned": "npm run build:frontend && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --arm64",
-    "build:linux": "npm run build:frontend && electron-builder --linux",
+    "build:linux": "npm run build:frontend && electron-builder --linux --arm64 --x64",
     "build:all": "npm run build:frontend && electron-builder --mac --win --linux",
     "icons": "node scripts/generate-icons.js"
   },
