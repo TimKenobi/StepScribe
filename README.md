@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/TimKenobi/StepScribe/releases/latest"><img src="https://img.shields.io/github/v/release/TimKenobi/StepScribe?style=flat-square&color=6b8aaf" alt="Latest Release"></a>
+  <a href="https://github.com/TimKenobi/StepScribe/releases"><img src="https://img.shields.io/github/v/release/TimKenobi/StepScribe?include_prereleases&style=flat-square&color=6b8aaf" alt="Latest Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square" alt="License: GPL-3.0"></a>
 </p>
 
