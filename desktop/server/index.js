@@ -22,6 +22,10 @@ const ALLOWED_TYPES = new Set([
   "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif",
   "application/pdf", "text/plain", "text/markdown",
 ]);
+const AUDIO_TYPES = new Set([
+  "audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/wav", "audio/x-wav",
+  "audio/mp3", "audio/flac", "audio/x-m4a", "video/webm",
+]);
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 /** Wrap async route handlers so Express catches errors */
@@ -832,6 +836,59 @@ Rules:
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     await run("DELETE FROM attachments WHERE id = $1", [req.params.id]);
     res.json({ deleted: true });
+  }));
+
+  // ══════════════════════════════════════
+  // Voice Transcription
+  // ══════════════════════════════════════
+  const audioUpload = multer({
+    storage: multer.diskStorage({
+      destination: uploadDir,
+      filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase() || ".webm";
+        cb(null, `voice_${crypto.randomUUID().replace(/-/g, "")}${ext}`);
+      },
+    }),
+    limits: { fileSize: MAX_FILE_SIZE },
+    fileFilter: (req, file, cb) => {
+      cb(null, AUDIO_TYPES.has(file.mimetype));
+    },
+  });
+
+  app.post("/api/transcribe", audioUpload.single("audio"), asyncHandler(async (req, res) => {
+    if (!req.file) return res.status(400).json({ detail: "No audio file or unsupported type" });
+    const audioPath = path.join(uploadDir, req.file.filename);
+    try {
+      const s = ai.getSettings();
+      // Determine which OpenAI-compatible endpoint + key to use for Whisper
+      let apiKey = "";
+      let baseURL;
+      if (s.openai_api_key) {
+        apiKey = s.openai_api_key;
+        // default OpenAI base URL
+      } else if (s.ai_provider === "custom" && s.custom_ai_base_url && s.custom_ai_api_key) {
+        apiKey = s.custom_ai_api_key;
+        baseURL = s.custom_ai_base_url;
+      } else if (s.grok_api_key) {
+        apiKey = s.grok_api_key;
+        baseURL = s.grok_base_url || "https://api.x.ai/v1";
+      }
+
+      if (!apiKey) {
+        return res.status(400).json({ detail: "Voice transcription requires an OpenAI API key. Add one in Settings → AI Provider (you can still use any provider for chat)." });
+      }
+
+      const OpenAI = require("openai");
+      const client = new OpenAI({ apiKey, baseURL });
+      const transcription = await client.audio.transcriptions.create({
+        file: fs.createReadStream(audioPath),
+        model: "whisper-1",
+      });
+      res.json({ text: transcription.text || "" });
+    } finally {
+      // Clean up temp audio file
+      try { fs.unlinkSync(audioPath); } catch {}
+    }
   }));
 
   // ══════════════════════════════════════
