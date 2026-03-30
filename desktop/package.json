@@ -38,7 +38,6 @@
     "productName": "StepScribe",
     "copyright": "Copyright © 2025 Pixel Space Technologies LLC",
     "afterSign": "scripts/notarize.js",
-    "afterPack": "scripts/afterPack.js",
     "directories": {
       "output": "dist",
       "buildResources": "assets"
@@ -67,7 +66,7 @@
     "mac": {
       "category": "public.app-category.lifestyle",
       "icon": "assets/icon.icns",
-      "identity": null,
+      "identity": "Pixel Space Technologies LLC (X3H9P4VWQ7)",
       "target": [
         {
           "target": "dmg",
