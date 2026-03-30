@@ -190,7 +190,12 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
   app.get("/api/heroes/", asyncHandler(async (req, res) => {
     const { user_id = "default" } = req.query;
     const heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 ORDER BY sort_order", [user_id]);
-    res.json(heroes.map(h => ({ ...h, is_active: !!h.is_active })));
+    res.json(heroes.map(h => {
+      let quotes = [];
+      try { quotes = typeof h.quotes === "string" ? JSON.parse(h.quotes) : (h.quotes || []); } catch {}
+      if (!Array.isArray(quotes)) quotes = [];
+      return { ...h, is_active: !!h.is_active, quotes };
+    }));
   }));
 
   app.post("/api/heroes/", asyncHandler(async (req, res) => {
@@ -198,7 +203,7 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
     const id = uuid();
     await run("INSERT INTO user_heroes (id, user_id, name, description) VALUES ($1, $2, $3, $4)", [id, user_id, name, description]);
     const hero = await getOne("SELECT * FROM user_heroes WHERE id = $1", [id]);
-    res.json({ ...hero, is_active: !!hero.is_active });
+    res.json({ ...hero, is_active: !!hero.is_active, quotes: [] });
   }));
 
   app.delete("/api/heroes/:id", asyncHandler(async (req, res) => {

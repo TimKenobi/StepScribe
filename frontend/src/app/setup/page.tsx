@@ -7,7 +7,7 @@ import type { FaithTradition } from "@/lib/types";
 import {
   Check, ChevronRight, ChevronLeft, Flame, User, Cpu, Loader2,
   CheckCircle, XCircle, Download, Monitor, Cloud, AlertTriangle,
-  Server, RefreshCw, Sparkles, Shield,
+  Server, RefreshCw, Sparkles, Shield, Lock, Eye, EyeOff,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -52,7 +52,8 @@ export default function SetupPage() {
    * 3 = Faith tradition
    * 4 = About you
    * 5 = Heroes
-   * 6 = Done
+   * 6 = Password (optional)
+   * 7 = Done
    */
   const [step, setStep] = useState(0);
   const [aiMode, setAiMode] = useState<"local" | "cloud" | "">("");
@@ -94,6 +95,13 @@ export default function SetupPage() {
   const [creatingCompanion, setCreatingCompanion] = useState(false);
   const [companionCreated, setCompanionCreated] = useState(false);
 
+  // ── Password setup ──
+  const [setupPassword, setSetupPassword] = useState("");
+  const [setupPasswordConfirm, setSetupPasswordConfirm] = useState("");
+  const [showSetupPassword, setShowSetupPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
+
   /* ── Load initial data ── */
   useEffect(() => {
     onboardingApi.status().then((status) => {
@@ -106,7 +114,7 @@ export default function SetupPage() {
 
   /* ── Confetti on completion ── */
   useEffect(() => {
-    if (step === 6) {
+    if (step === 7) {
       const end = Date.now() + 2500;
       const colors = ["#22c55e", "#eab308", "#a855f7", "#3b82f6"];
       const frame = () => {
@@ -832,16 +840,88 @@ export default function SetupPage() {
                 <ChevronLeft size={14} /> Back
               </button>
               <button onClick={completeOnboarding} disabled={loading}
-                className="px-6 py-2.5 rounded-lg text-sm font-medium"
+                className="px-6 py-2.5 rounded-lg text-sm font-medium inline-flex items-center gap-1"
                 style={{ backgroundColor: "var(--accent)", color: "#fff", opacity: loading ? 0.7 : 1 }}>
-                {loading ? "Saving..." : "Complete Setup"}
+                {loading ? "Saving..." : "Next"} <ChevronRight size={14} />
               </button>
             </div>
           </div>
         )}
 
-        {/* ═══ Step 6: Done ═══ */}
+        {/* ═══ Step 6: Password (optional) ═══ */}
         {step === 6 && (
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <Lock size={24} style={{ color: "var(--accent)" }} />
+              <h2 className="text-xl font-semibold" style={{ color: "var(--text-primary)" }}>Protect Your Journal</h2>
+            </div>
+            <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
+              Add a password to lock StepScribe when it opens. This is optional — you can always set or change it later in Settings.
+            </p>
+
+            <div className="p-5 rounded-xl border mb-6" style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>Password</label>
+                  <div className="relative">
+                    <input
+                      type={showSetupPassword ? "text" : "password"}
+                      value={setupPassword}
+                      onChange={(e) => { setSetupPassword(e.target.value); setPasswordError(""); }}
+                      placeholder="Enter a password"
+                      className="w-full px-3 py-2 rounded-lg text-sm outline-none pr-10"
+                      style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                    />
+                    <button onClick={() => setShowSetupPassword(!showSetupPassword)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1" style={{ color: "var(--text-muted)" }}>
+                      {showSetupPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>Confirm Password</label>
+                  <input
+                    type={showSetupPassword ? "text" : "password"}
+                    value={setupPasswordConfirm}
+                    onChange={(e) => { setSetupPasswordConfirm(e.target.value); setPasswordError(""); }}
+                    placeholder="Confirm your password"
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                  />
+                </div>
+                {passwordError && (
+                  <p className="text-xs" style={{ color: "var(--danger, #ef4444)" }}>{passwordError}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setStep(5)} className="px-5 py-2.5 rounded-lg text-sm inline-flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
+                <ChevronLeft size={14} /> Back
+              </button>
+              <button
+                onClick={async () => {
+                  if (setupPassword) {
+                    if (setupPassword.length < 4) { setPasswordError("Password must be at least 4 characters."); return; }
+                    if (setupPassword !== setupPasswordConfirm) { setPasswordError("Passwords do not match."); return; }
+                    setSavingPassword(true);
+                    try { await settingsApi.setPassword(setupPassword); } catch {}
+                    setSavingPassword(false);
+                  }
+                  setStep(7);
+                }}
+                disabled={savingPassword}
+                className="px-6 py-2.5 rounded-lg text-sm font-medium inline-flex items-center gap-1"
+                style={{ backgroundColor: "var(--accent)", color: "#fff", opacity: savingPassword ? 0.7 : 1 }}>
+                {savingPassword ? "Saving..." : setupPassword ? "Set Password & Finish" : "Skip"}
+                {!savingPassword && <ChevronRight size={14} />}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ Step 7: Done ═══ */}
+        {step === 7 && (
           <div className="text-center">
             <div className="mb-8 flex justify-center">
               <div className="relative">
@@ -872,6 +952,12 @@ export default function SetupPage() {
               <div className="p-3 rounded-xl border" style={{ backgroundColor: "var(--bg-secondary)", borderColor: "var(--border)" }}>
                 <div className="text-2xl font-semibold" style={{ color: "var(--accent)" }}>{aboutMe.trim() ? "\u2713" : "\u25CB"}</div>
                 <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>About You</div>
+              </div>
+              <div className="p-3 rounded-xl border" style={{ backgroundColor: "var(--bg-secondary)", borderColor: "var(--border)" }}>
+                <div className="flex justify-center" style={{ color: "var(--accent)" }}>
+                  <Lock size={24} />
+                </div>
+                <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>{setupPassword ? "Locked" : "No Lock"}</div>
               </div>
             </div>
 
