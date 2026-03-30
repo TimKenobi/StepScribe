@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, X, ToggleLeft, ToggleRight, Search, Loader2, Check, PenLine } from "lucide-react";
+import { Plus, X, ToggleLeft, ToggleRight, Search, Loader2, Check, PenLine, BookOpen, Trash2 } from "lucide-react";
 import HeroQuotes from "@/components/HeroQuotes";
-import { heroesApi } from "@/lib/api";
+import { heroesApi, quotesApi } from "@/lib/api";
 import { Hero } from "@/lib/types";
 
 export default function HeroesPage() {
@@ -18,14 +18,47 @@ export default function HeroesPage() {
   const [customQuoteText, setCustomQuoteText] = useState("");
   const [customQuoteSource, setCustomQuoteSource] = useState("");
 
+  // Standalone quotes / passages
+  const [userQuotes, setUserQuotes] = useState<any[]>([]);
+  const [showAddQuote, setShowAddQuote] = useState(false);
+  const [newQuoteText, setNewQuoteText] = useState("");
+  const [newQuoteAuthor, setNewQuoteAuthor] = useState("");
+  const [newQuoteSource, setNewQuoteSource] = useState("");
+  const [savingUserQuote, setSavingUserQuote] = useState(false);
+
   useEffect(() => {
     loadHeroes();
+    loadUserQuotes();
   }, []);
 
   const loadHeroes = async () => {
     try {
       const data = await heroesApi.list();
       setHeroes(data);
+    } catch {}
+  };
+
+  const loadUserQuotes = async () => {
+    try {
+      const data = await quotesApi.list();
+      setUserQuotes(data);
+    } catch {}
+  };
+
+  const addUserQuote = async () => {
+    if (!newQuoteText.trim()) return;
+    setSavingUserQuote(true);
+    try {
+      await quotesApi.add({ text: newQuoteText.trim(), author: newQuoteAuthor.trim(), source: newQuoteSource.trim() });
+      setNewQuoteText(""); setNewQuoteAuthor(""); setNewQuoteSource(""); setShowAddQuote(false);
+      loadUserQuotes();
+    } catch {} finally { setSavingUserQuote(false); }
+  };
+
+  const removeUserQuote = async (id: string) => {
+    try {
+      await quotesApi.remove(id);
+      loadUserQuotes();
     } catch {}
   };
 
@@ -294,6 +327,95 @@ export default function HeroesPage() {
           Add a Hero
         </button>
       )}
+
+      {/* ── Quotes & Passages ── */}
+      <div className="mt-12 pt-8" style={{ borderTop: "1px solid var(--border)" }}>
+        <div className="flex items-center gap-2 mb-2">
+          <BookOpen size={18} style={{ color: "var(--accent)" }} />
+          <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
+            Quotes &amp; Passages
+          </h2>
+        </div>
+        <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
+          Book passages, sayings, reminders — anything that speaks to you. These rotate alongside hero quotes in your journal.
+        </p>
+
+        {/* Existing user quotes */}
+        {userQuotes.length > 0 && (
+          <div className="space-y-2 mb-4">
+            {userQuotes.map((q) => (
+              <div key={q.id} className="p-3 rounded-lg border flex items-start gap-3"
+                style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)", opacity: q.is_active ? 1 : 0.5 }}>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm italic leading-relaxed" style={{ color: "var(--text-primary)" }}>
+                    &ldquo;{q.text}&rdquo;
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    {q.author && <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{q.author}</span>}
+                    {q.author && q.source && <span className="text-xs" style={{ color: "var(--text-muted)" }}>·</span>}
+                    {q.source && <span className="text-xs" style={{ color: "var(--text-muted)" }}>{q.source}</span>}
+                  </div>
+                </div>
+                <button onClick={() => removeUserQuote(q.id)} className="p-1 rounded hover:bg-black/5 shrink-0" style={{ color: "var(--danger)" }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add quote form */}
+        {showAddQuote ? (
+          <div className="p-4 rounded-lg border" style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}>
+            <textarea
+              value={newQuoteText}
+              onChange={(e) => setNewQuoteText(e.target.value)}
+              placeholder="The quote, passage, or reminder..."
+              rows={3}
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none mb-3"
+              style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+            />
+            <div className="flex gap-3 mb-3">
+              <input
+                value={newQuoteAuthor}
+                onChange={(e) => setNewQuoteAuthor(e.target.value)}
+                placeholder="Author (optional)"
+                className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+              />
+              <input
+                value={newQuoteSource}
+                onChange={(e) => setNewQuoteSource(e.target.value)}
+                placeholder="Source — book, poem, etc. (optional)"
+                className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={addUserQuote}
+                disabled={!newQuoteText.trim() || savingUserQuote}
+                className="px-4 py-2 rounded-lg text-sm flex items-center gap-1.5"
+                style={{ backgroundColor: "var(--accent)", color: "#fff", opacity: !newQuoteText.trim() ? 0.5 : 1 }}
+              >
+                {savingUserQuote ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                Save Quote
+              </button>
+              <button onClick={() => { setShowAddQuote(false); setNewQuoteText(""); setNewQuoteAuthor(""); setNewQuoteSource(""); }}
+                className="px-4 py-2 rounded-lg text-sm" style={{ color: "var(--text-muted)" }}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowAddQuote(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm"
+            style={{ backgroundColor: "var(--bg-tertiary)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+          >
+            <PenLine size={16} />
+            Add a Quote or Passage
+          </button>
+        )}
+      </div>
     </div>
   );
 }

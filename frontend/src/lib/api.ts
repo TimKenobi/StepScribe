@@ -74,6 +74,15 @@ export const heroesApi = {
     request<any>(`/api/heroes/${id}/quotes`, { method: "PATCH", body: JSON.stringify({ quotes }) }),
 };
 
+// Standalone Quotes / Passages
+export const quotesApi = {
+  list: (userId = "default") => request<any[]>(`/api/quotes/?user_id=${userId}`),
+  add: (data: { text: string; author?: string; source?: string; category?: string }) =>
+    request<any>("/api/quotes/", { method: "POST", body: JSON.stringify(data) }),
+  remove: (id: string) => request<any>(`/api/quotes/${id}`, { method: "DELETE" }),
+  toggle: (id: string) => request<any>(`/api/quotes/${id}/toggle`, { method: "PATCH" }),
+};
+
 // Export
 export const exportApi = {
   journalBook: async (data: any) => {

@@ -109,6 +109,17 @@ async function createTables() {
       sort_order INTEGER DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS user_quotes (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id),
+      text TEXT NOT NULL,
+      author TEXT DEFAULT '',
+      source TEXT DEFAULT '',
+      category TEXT DEFAULT 'general',
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS group_journals (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,

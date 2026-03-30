@@ -221,7 +221,7 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
     res.json({ id: hero.id, is_active: newVal });
   }));
 
-  // Hero quotes — return all quotes from active heroes
+  // Hero quotes + standalone user quotes — return all for the rotator
   app.get("/api/heroes/quotes", asyncHandler(async (req, res) => {
     const { user_id = "default" } = req.query;
     const heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [user_id]);
@@ -234,6 +234,11 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
           quotes.push({ author: hero.name, text: q.text, source: q.source || "" });
         }
       }
+    }
+    // Also include standalone user quotes
+    const userQuotes = await getAll("SELECT * FROM user_quotes WHERE user_id = $1 AND is_active = TRUE ORDER BY created_at DESC", [user_id]);
+    for (const uq of userQuotes) {
+      quotes.push({ author: uq.author || "", text: uq.text, source: uq.source || "" });
     }
     res.json(quotes);
   }));
@@ -277,6 +282,39 @@ If no verified quotes exist, return: []`;
     }));
     await run("UPDATE user_heroes SET quotes = $1 WHERE id = $2", [JSON.stringify(quotes), req.params.id]);
     res.json({ id: hero.id, quotes });
+  }));
+
+  // ══════════════════════════════════════
+  // Standalone Quotes / Passages
+  // ══════════════════════════════════════
+  app.get("/api/quotes/", asyncHandler(async (req, res) => {
+    const { user_id = "default" } = req.query;
+    const quotes = await getAll("SELECT * FROM user_quotes WHERE user_id = $1 ORDER BY created_at DESC", [user_id]);
+    res.json(quotes);
+  }));
+
+  app.post("/api/quotes/", asyncHandler(async (req, res) => {
+    const { user_id = "default", text, author = "", source = "", category = "general" } = req.body;
+    if (!text || !text.trim()) return res.status(400).json({ detail: "Quote text is required" });
+    const id = crypto.randomUUID();
+    await run(
+      "INSERT INTO user_quotes (id, user_id, text, author, source, category) VALUES ($1, $2, $3, $4, $5, $6)",
+      [id, user_id, String(text).slice(0, 1000), String(author).slice(0, 200), String(source).slice(0, 300), String(category).slice(0, 50)]
+    );
+    res.json({ id, user_id, text, author, source, category, is_active: true });
+  }));
+
+  app.delete("/api/quotes/:id", asyncHandler(async (req, res) => {
+    await run("DELETE FROM user_quotes WHERE id = $1", [req.params.id]);
+    res.json({ ok: true });
+  }));
+
+  app.patch("/api/quotes/:id/toggle", asyncHandler(async (req, res) => {
+    const q = await getOne("SELECT * FROM user_quotes WHERE id = $1", [req.params.id]);
+    if (!q) return res.status(404).json({ detail: "Quote not found" });
+    const newVal = !q.is_active;
+    await run("UPDATE user_quotes SET is_active = $1 WHERE id = $2", [newVal, req.params.id]);
+    res.json({ id: q.id, is_active: newVal });
   }));
 
   // ══════════════════════════════════════
@@ -1435,6 +1473,17 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
       let parsed = [];
       try { parsed = typeof h.quotes === "string" ? JSON.parse(h.quotes) : (h.quotes || []); } catch {}
       if (Array.isArray(parsed) && parsed.length > 0) heroQuotesMap[h.name] = parsed;
+    }
+    // Include standalone user quotes/passages
+    const userQuotes = await getAll("SELECT * FROM user_quotes WHERE user_id = $1 AND is_active = TRUE ORDER BY created_at DESC LIMIT 20", [userId]);
+    if (userQuotes.length) {
+      const qList = userQuotes.map(q => {
+        let s = `"${q.text}"`;
+        if (q.author) s += ` — ${q.author}`;
+        if (q.source) s += ` (${q.source})`;
+        return s;
+      });
+      parts.push(`QUOTES & PASSAGES THEY'VE SAVED (these resonate with them — reference naturally when relevant):\n${qList.join("\n")}`);
     }
     const memories = await getAll("SELECT * FROM ai_memories WHERE user_id = $1 AND is_active = TRUE ORDER BY updated_at DESC LIMIT 50", [userId]);
     if (memories.length) {
