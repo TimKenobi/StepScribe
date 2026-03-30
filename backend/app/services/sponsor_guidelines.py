@@ -147,6 +147,110 @@ def get_system_prompt() -> str:
     return SYSTEM_PROMPT
 
 
+TWELVE_STEPS = {
+    1: {
+        "name": "Honesty",
+        "text": "We admitted we were powerless — that our lives had become unmanageable.",
+        "focus": "This step is about surrender and honesty. Help them see where control has failed. "
+                 "The question isn't whether they're weak — it's whether their current approach is working. "
+                 "Gently explore what 'unmanageable' looks like in their life right now.",
+    },
+    2: {
+        "name": "Hope",
+        "text": "Came to believe that a Power greater than ourselves could restore us to sanity.",
+        "focus": "This is about openness to something beyond the self — not religion, but the willingness "
+                 "to believe that change is possible. Explore what 'sanity' would look like for them. "
+                 "What would life look like if the insanity of the old patterns stopped?",
+    },
+    3: {
+        "name": "Faith",
+        "text": "Made a decision to turn our will and our lives over to the care of God as we understood Him.",
+        "focus": "This is about letting go of the need to control everything. 'God as we understood Him' "
+                 "means their own conception — it could be nature, the group, a higher principle, or a deity. "
+                 "Help them explore what 'turning it over' means practically in their daily life.",
+    },
+    4: {
+        "name": "Courage",
+        "text": "Made a searching and fearless moral inventory of ourselves.",
+        "focus": "This is deep self-examination — resentments, fears, harms done, patterns. "
+                 "Help them be thorough but not self-destructive. The goal is clarity, not punishment. "
+                 "Guide them through looking at their part in situations honestly.",
+    },
+    5: {
+        "name": "Integrity",
+        "text": "Admitted to God, to ourselves, and to another human being the exact nature of our wrongs.",
+        "focus": "This is about breaking the shame cycle through confession and connection. "
+                 "The power is in saying it out loud to another person. Help them process the vulnerability "
+                 "and courage this requires. What are they most afraid to say?",
+    },
+    6: {
+        "name": "Willingness",
+        "text": "Were entirely ready to have God remove all these defects of character.",
+        "focus": "This step asks: are you ready to change? Not just the big things, but the comfortable defenses "
+                 "that no longer serve you. Help them identify which character defects they're secretly attached to "
+                 "and why. Willingness doesn't mean perfection — just readiness.",
+    },
+    7: {
+        "name": "Humility",
+        "text": "Humbly asked Him to remove our shortcomings.",
+        "focus": "Humility isn't humiliation — it's right-sizing. It's knowing you can't fix yourself alone. "
+                 "Help them practice asking for help, whether from a higher power, community, or the process itself. "
+                 "What would it look like to stop white-knuckling and actually let something shift?",
+    },
+    8: {
+        "name": "Brotherly Love",
+        "text": "Made a list of all persons we had harmed, and became willing to make amends to them all.",
+        "focus": "This is about building the willingness before the action. Help them create an honest list "
+                 "without minimizing or catastrophizing. Include themselves on it. "
+                 "The willingness is the work here — the amends come next.",
+    },
+    9: {
+        "name": "Justice",
+        "text": "Made direct amends to such people wherever possible, except when to do so would injure them or others.",
+        "focus": "Amends aren't just apologies — they're changed behavior. Help them think through each amend: "
+                 "What happened? What was their part? What would make it right? And crucially — would this amend "
+                 "help the other person, or just make themselves feel better? 'Except when to do so would injure' is key.",
+    },
+    10: {
+        "name": "Perseverance",
+        "text": "Continued to take personal inventory and when we were wrong promptly admitted it.",
+        "focus": "This is the daily practice — the maintenance step. Help them build a habit of honest self-reflection. "
+                 "When they're wrong, they say so quickly. When resentment builds, they catch it. "
+                 "This step prevents the slow drift back into old patterns.",
+    },
+    11: {
+        "name": "Spiritual Awareness",
+        "text": "Sought through prayer and meditation to improve our conscious contact with God as we understood Him, "
+                "praying only for knowledge of His will for us and the power to carry that out.",
+        "focus": "This is about building a practice of quiet reflection — listening, not just asking. "
+                 "Help them find their version of this: meditation, journaling, walks in nature, contemplation. "
+                 "The goal is conscious contact with something larger than the ego's demands.",
+    },
+    12: {
+        "name": "Service",
+        "text": "Having had a spiritual awakening as the result of these Steps, we tried to carry this message "
+                "and to practice these principles in all our affairs.",
+        "focus": "The spiritual awakening isn't a lightning bolt — it's the slow shift that happened through the work. "
+                 "Now the question is: how do you live this? How do you carry it to others without preaching? "
+                 "Help them see that service isn't a burden — it's the thing that makes the growth stick.",
+    },
+}
+
+
+def get_step_context(step_number: int) -> str:
+    """Build step-specific context for the AI system prompt."""
+    step = TWELVE_STEPS.get(step_number)
+    if not step:
+        return ""
+    return (
+        f"\n\nCURRENT STEP FOCUS: Step {step_number} — {step['name']}\n"
+        f'"{step["text"]}"\n\n'
+        f"GUIDANCE FOR THIS STEP: {step['focus']}\n"
+        f"Help them work through this step specifically. Ask questions that go deeper. "
+        f"Don't rush them to the next step — real growth happens by sitting with each one."
+    )
+
+
 def get_system_prompt_with_heroes(hero_names: list[str], faith_tradition: str = "", faith_notes: str = "") -> str:
     """Build the system prompt, weaving in the user's chosen heroes and faith tradition."""
     extra = ""
@@ -158,21 +262,12 @@ def get_system_prompt_with_heroes(hero_names: list[str], faith_tradition: str = 
             f"Don't force it — only bring them up when it genuinely serves the moment."
         )
     if faith_tradition:
-        from app.models.models import FAITH_TRADITIONS
-        tradition = FAITH_TRADITIONS.get(faith_tradition, {})
-        label = tradition.get("label", faith_tradition)
-        figures = tradition.get("figures", [])
-        practices = tradition.get("practices", [])
         extra += (
-            f"\n\nThis person identifies as {label}. "
+            f"\n\nThis person identifies as {faith_tradition}. "
             f"Respect this deeply. When appropriate, you may draw on the language, wisdom, and "
-            f"spiritual practices of this tradition — but never preach, never lecture, and never "
+            f"spiritual practices of this tradition \u2014 but never preach, never lecture, and never "
             f"assume you know their relationship with their faith better than they do."
         )
-        if figures:
-            extra += f" Saints and figures in this tradition include: {', '.join(figures)}."
-        if practices:
-            extra += f" Practices they may find meaningful: {', '.join(practices)}."
         if faith_notes:
             extra += f" They've shared this about their faith: \"{faith_notes}\""
     return SYSTEM_PROMPT + extra

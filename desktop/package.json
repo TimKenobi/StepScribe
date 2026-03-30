@@ -1,13 +1,13 @@
 {
   "name": "stepscribe-desktop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "StepScribe — A journaling companion for recovery",
   "author": {
     "name": "Pixel Space Technologies LLC",
-    "email": "hello@pixelspace.dev"
+    "email": "tim@pixelspacetech.com"
   },
   "homepage": "https://github.com/TimKenobi/StepScribe",
-  "license": "GPL-3.0",
+  "license": "AGPL-3.0",
   "main": "main.js",
   "scripts": {
     "build:frontend": "cd ../frontend && NEXT_PUBLIC_API_URL='' npm run build && rm -rf ../desktop/frontend-dist && cp -r out ../desktop/frontend-dist",
@@ -66,7 +66,7 @@
     "mac": {
       "category": "public.app-category.lifestyle",
       "icon": "assets/icon.icns",
-      "identity": null,
+      "identity": "Pixel Space Technologies LLC (X3H9P4VWQ7)",
       "target": [
         {
           "target": "dmg",

@@ -5,6 +5,12 @@ import { BookOpen, FileJson, Upload, Calendar, Settings2, FileText } from "lucid
 import { exportApi, syncApi } from "@/lib/api";
 import { downloadJson, importJsonFile } from "@/lib/storage";
 
+declare global {
+  interface Window {
+    stepscribe?: { platform?: string; isDesktop?: boolean; openExternal?: (url: string) => Promise<void>; printToPDF?: (html: string) => Promise<string> };
+  }
+}
+
 export default function ExportPage() {
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
@@ -48,17 +54,42 @@ export default function ExportPage() {
         URL.revokeObjectURL(url);
         setMessage("Your journal has been exported as Markdown.");
       } else {
-        const blob = await exportApi.journalBook(payload);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `recovery-journal-${year}.pdf`;
-        a.click();
-        URL.revokeObjectURL(url);
-        setMessage("Your journal book has been downloaded.");
+        // PDF: Server returns HTML, then Electron converts to PDF via printToPDF IPC
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/export/journal-book`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => null);
+          throw new Error(errBody?.detail || `Server returned ${res.status}`);
+        }
+        const html = await res.text();
+        if (window.stepscribe?.printToPDF) {
+          try {
+            const pdfPath = await window.stepscribe.printToPDF(html);
+            if (pdfPath) {
+              setMessage(`Your journal book has been saved as PDF.`);
+            } else {
+              setMessage("Export cancelled.");
+            }
+          } catch (pdfErr: any) {
+            throw new Error(`PDF generation failed: ${pdfErr.message || "Unknown error"}`);
+          }
+        } else {
+          // Fallback for non-Electron: download as HTML
+          const blob = new Blob([html], { type: "text/html" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `recovery-journal-${year}.html`;
+          a.click();
+          URL.revokeObjectURL(url);
+          setMessage("Your journal book has been downloaded as HTML. Open it in a browser and print to PDF.");
+        }
       }
     } catch (err: any) {
-      setMessage("Could not generate book. Make sure you have published entries.");
+      setMessage(err.message || "Could not generate book. Make sure you have published entries.");
     }
     setGenerating(false);
   };
@@ -77,9 +108,16 @@ export default function ExportPage() {
     setImporting(true);
     try {
       const data = await importJsonFile() as any;
-      if (data.entries) {
-        await syncApi.import(data);
-        setMessage(`Imported ${data.entries.length} entries.`);
+      if (data.entries || data.heroes || data.memories || data.conversations) {
+        const result = await syncApi.import(data);
+        const parts = [];
+        if (result.entries_imported || result.entries_updated) parts.push(`${(result.entries_imported || 0) + (result.entries_updated || 0)} entries`);
+        if (result.heroes) parts.push(`${result.heroes} heroes`);
+        if (result.memories) parts.push(`${result.memories} memories`);
+        if (result.conversations) parts.push(`${result.conversations} conversations`);
+        if (result.moods) parts.push(`${result.moods} moods`);
+        if (result.attachments) parts.push(`${result.attachments} attachments`);
+        setMessage(parts.length ? `Imported ${parts.join(", ")}.` : "Import complete (no new data).");
       } else {
         setMessage("Invalid backup file format.");
       }

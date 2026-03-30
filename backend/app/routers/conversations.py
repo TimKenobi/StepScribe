@@ -12,7 +12,7 @@ from app.database import get_db
 from app.models.models import Conversation, JournalEntry
 from app.services.ai_service import get_ai_provider
 from app.services.memory_service import get_memory_context, extract_memories, maybe_auto_compact
-from app.services.sponsor_guidelines import get_system_prompt, get_template, get_all_templates
+from app.services.sponsor_guidelines import get_system_prompt, get_step_context, get_template, get_all_templates
 
 router = APIRouter()
 
@@ -23,6 +23,7 @@ class MessageIn(BaseModel):
     entry_id: str | None = None
     message: str
     template_key: str | None = None
+    current_step: int | None = None
 
 
 class ConversationOut(BaseModel):
@@ -88,6 +89,8 @@ async def send_message(data: MessageIn, db: AsyncSession = Depends(get_db)):
     system = get_system_prompt()
     if memory_context:
         system += "\n\n" + memory_context
+    if data.current_step:
+        system += get_step_context(data.current_step)
 
     # Inject current journal entry content so AI can read it
     entry_id = data.entry_id or convo.entry_id
@@ -175,6 +178,8 @@ async def send_message_stream(data: MessageIn, db: AsyncSession = Depends(get_db
     system = get_system_prompt()
     if memory_context:
         system += "\n\n" + memory_context
+    if data.current_step:
+        system += get_step_context(data.current_step)
 
     # Inject current journal entry content so AI can read it
     entry_id = data.entry_id or convo.entry_id

@@ -31,7 +31,7 @@ export function getOfflineCount(): number {
 // Check if the backend is reachable
 export async function isOnline(): Promise<boolean> {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const res = await fetch(`${apiUrl}/health`, { method: "GET", signal: AbortSignal.timeout(3000) });
     return res.ok;
   } catch {

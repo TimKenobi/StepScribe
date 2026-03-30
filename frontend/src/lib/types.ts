@@ -36,6 +36,7 @@ export interface Hero {
   description: string;
   is_active: boolean;
   sort_order: number;
+  quotes?: Quote[];
 }
 
 export interface Quote {
@@ -55,6 +56,7 @@ export interface Group {
   name: string;
   description: string;
   invite_code: string;
+  share_code?: string;
   created_by: string;
   created_at: string;
 }

@@ -14,7 +14,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.models import (
     JournalEntry, MoodEntry, MOOD_WEATHER, UserHero, UserPreferences,
-    AIMemory, Conversation, Attachment, FAITH_TRADITIONS,
+    AIMemory, Conversation, Attachment,
 )
 from app.services.export_service import build_journal_book_html, generate_pdf
 
@@ -78,10 +78,8 @@ async def create_journal_book(req: BookRequest, db: AsyncSession = Depends(get_d
     prefs = prefs_result.scalar_one_or_none()
 
     about_me = prefs.about_me if prefs else ""
-    faith_key = prefs.faith_tradition if prefs else ""
-    faith_info = FAITH_TRADITIONS.get(faith_key, {})
-    faith_label = faith_info.get("label", "")
-    faith_description = faith_info.get("description", "")
+    faith_label = prefs.faith_tradition if prefs else ""
+    faith_description = prefs.faith_notes if prefs and prefs.faith_notes else ""
 
     # ── Heroes ──
     heroes_data = []

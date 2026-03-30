@@ -3,14 +3,20 @@ Settings router — manage AI provider configuration from the UI.
 Reads/writes to app_config table, applies changes to runtime settings.
 """
 
-from fastapi import APIRouter, Depends
+import hashlib
+import os
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models.models import AppConfig
+from app.models.models import (
+    AppConfig, JournalEntry, MoodEntry, Conversation, AIMemory,
+    UserHero, UserPreferences, Attachment, SharedEntry, GroupMember, GroupJournal,
+)
 
 router = APIRouter()
 
@@ -191,3 +197,170 @@ async def test_ai_connection(db: AsyncSession = Depends(get_db)):
             "provider": provider_name,
             "message": str(e)[:300],
         }
+
+
+# ── Factory Reset ──
+
+def _hash_password(password: str) -> str:
+    """Hash a password with PBKDF2 + random salt."""
+    salt = os.urandom(16).hex()
+    h = hashlib.pbkdf2_hmac("sha512", password.encode(), salt.encode(), 100000).hex()
+    return f"{salt}:{h}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    """Verify a password against a stored salt:hash."""
+    if not stored or ":" not in stored:
+        return False
+    salt, h = stored.split(":", 1)
+    check = hashlib.pbkdf2_hmac("sha512", password.encode(), salt.encode(), 100000).hex()
+    return check == h
+
+
+@router.post("/reset-all")
+async def factory_reset(data: dict, db: AsyncSession = Depends(get_db)):
+    """Factory reset — clear ALL user data. Preserves AI provider config."""
+    if data.get("confirmation") != "RESET":
+        raise HTTPException(status_code=400, detail="Type RESET to confirm factory reset.")
+
+    # Delete in dependency order
+    await db.execute(delete(Conversation))
+    await db.execute(delete(AIMemory))
+    await db.execute(delete(MoodEntry))
+    await db.execute(delete(SharedEntry))
+    await db.execute(delete(Attachment))
+    await db.execute(delete(GroupMember))
+    await db.execute(delete(GroupJournal))
+    await db.execute(delete(UserHero))
+    await db.execute(delete(JournalEntry))
+
+    # Reset preferences
+    stmt = select(UserPreferences).where(UserPreferences.user_id == "default")
+    result = await db.execute(stmt)
+    prefs = result.scalar_one_or_none()
+    if prefs:
+        prefs.faith_tradition = ""
+        prefs.faith_notes = ""
+        prefs.about_me = ""
+        prefs.onboarding_complete = False
+
+    # Clear password but keep AI config
+    cfg_stmt = select(AppConfig).where(AppConfig.id == "default")
+    cfg_result = await db.execute(cfg_stmt)
+    cfg = cfg_result.scalar_one_or_none()
+    if cfg:
+        cfg.app_password_hash = ""
+
+    await db.commit()
+    return {"status": "ok", "message": "All data has been reset."}
+
+
+# ── Password Protection ──
+
+@router.get("/password")
+async def has_password(db: AsyncSession = Depends(get_db)):
+    """Check if a password is set."""
+    stmt = select(AppConfig).where(AppConfig.id == "default")
+    result = await db.execute(stmt)
+    config = result.scalar_one_or_none()
+    return {"has_password": bool(config and config.app_password_hash)}
+
+
+@router.post("/password")
+async def set_password(data: dict, db: AsyncSession = Depends(get_db)):
+    """Set or change the app password."""
+    password = data.get("password", "")
+    current_password = data.get("current_password", "")
+
+    if not password or len(password) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters.")
+
+    stmt = select(AppConfig).where(AppConfig.id == "default")
+    result = await db.execute(stmt)
+    config = result.scalar_one_or_none()
+
+    # If changing password, verify current one
+    if config and config.app_password_hash:
+        if not current_password:
+            raise HTTPException(status_code=400, detail="Current password required.")
+        if not _verify_password(current_password, config.app_password_hash):
+            raise HTTPException(status_code=403, detail="Current password is incorrect.")
+
+    if not config:
+        config = AppConfig(id="default")
+        db.add(config)
+
+    config.app_password_hash = _hash_password(password)
+    await db.commit()
+    return {"status": "ok", "has_password": True}
+
+
+@router.post("/verify-password")
+async def verify_password(data: dict, db: AsyncSession = Depends(get_db)):
+    """Verify the app password."""
+    stmt = select(AppConfig).where(AppConfig.id == "default")
+    result = await db.execute(stmt)
+    config = result.scalar_one_or_none()
+
+    if not config or not config.app_password_hash:
+        return {"verified": True}  # No password set
+
+    password = data.get("password", "")
+    if not password:
+        return {"verified": False}
+
+    return {"verified": _verify_password(password, config.app_password_hash)}
+
+
+@router.delete("/password")
+async def remove_password(data: dict, db: AsyncSession = Depends(get_db)):
+    """Remove app password protection."""
+    stmt = select(AppConfig).where(AppConfig.id == "default")
+    result = await db.execute(stmt)
+    config = result.scalar_one_or_none()
+
+    if not config or not config.app_password_hash:
+        return {"status": "ok", "has_password": False}
+
+    password = data.get("password", "")
+    if not password:
+        raise HTTPException(status_code=400, detail="Password required to remove protection.")
+    if not _verify_password(password, config.app_password_hash):
+        raise HTTPException(status_code=403, detail="Incorrect password.")
+
+    config.app_password_hash = ""
+    await db.commit()
+    return {"status": "ok", "has_password": False}
+
+
+# ── Step tracking ──
+
+@router.get("/current-step")
+async def get_current_step(user_id: str = "default", db: AsyncSession = Depends(get_db)):
+    """Get the user's current step."""
+    stmt = select(UserPreferences).where(UserPreferences.user_id == user_id)
+    result = await db.execute(stmt)
+    prefs = result.scalar_one_or_none()
+    return {"current_step": prefs.current_step if prefs else 0}
+
+
+@router.put("/current-step")
+async def set_current_step(data: dict, user_id: str = "default", db: AsyncSession = Depends(get_db)):
+    """Set the user's current step (0 = none, 1-12)."""
+    step = data.get("step", 0)
+    if not isinstance(step, int) or step < 0 or step > 12:
+        raise HTTPException(status_code=400, detail="Step must be 0-12.")
+
+    stmt = select(UserPreferences).where(UserPreferences.user_id == user_id)
+    result = await db.execute(stmt)
+    prefs = result.scalar_one_or_none()
+
+    if prefs:
+        prefs.current_step = step
+    else:
+        from app.models.models import UserPreferences as UP
+        prefs = UP(user_id=user_id, current_step=step)
+        db.add(prefs)
+
+    await db.commit()
+    return {"current_step": step}

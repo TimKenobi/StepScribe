@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8100";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -67,6 +67,20 @@ export const heroesApi = {
     request<any>("/api/heroes/", { method: "POST", body: JSON.stringify(data) }),
   remove: (id: string) => request<any>(`/api/heroes/${id}`, { method: "DELETE" }),
   toggle: (id: string) => request<any>(`/api/heroes/${id}/toggle`, { method: "PATCH" }),
+  quotes: () => request<any[]>("/api/heroes/quotes"),
+  searchQuotes: (name: string) =>
+    request<{ quotes: any[] }>("/api/heroes/search-quotes", { method: "POST", body: JSON.stringify({ name }) }),
+  updateQuotes: (id: string, quotes: any[]) =>
+    request<any>(`/api/heroes/${id}/quotes`, { method: "PATCH", body: JSON.stringify({ quotes }) }),
+};
+
+// Standalone Quotes / Passages
+export const quotesApi = {
+  list: (userId = "default") => request<any[]>(`/api/quotes/?user_id=${userId}`),
+  add: (data: { text: string; author?: string; source?: string; category?: string }) =>
+    request<any>("/api/quotes/", { method: "POST", body: JSON.stringify(data) }),
+  remove: (id: string) => request<any>(`/api/quotes/${id}`, { method: "DELETE" }),
+  toggle: (id: string) => request<any>(`/api/quotes/${id}/toggle`, { method: "PATCH" }),
 };
 
 // Export
@@ -100,14 +114,27 @@ export const groupsApi = {
     request<any>("/api/groups/", { method: "POST", body: JSON.stringify(data) }),
   join: (data: { user_id: string; invite_code: string; role?: string }) =>
     request<any>("/api/groups/join", { method: "POST", body: JSON.stringify(data) }),
-  share: (data: { entry_id: string; group_id: string; shared_by: string }) =>
+  share: (data: { entry_id: string; group_id: string; shared_by: string; title?: string; content?: string }) =>
     request<any>("/api/groups/share", { method: "POST", body: JSON.stringify(data) }),
+  shared: (groupId: string) => request<any[]>(`/api/groups/${groupId}/shared`),
+  members: (groupId: string) => request<any[]>(`/api/groups/${groupId}/members`),
+  syncPull: (userId = "default") =>
+    request<any>("/api/groups/sync/pull", { method: "POST", body: JSON.stringify({ user_id: userId }) }),
+};
+
+// Supabase config
+export const supabaseApi = {
+  get: () => request<any>("/api/settings/supabase"),
+  save: (data: { supabase_url?: string; supabase_anon_key?: string; supabase_display_name?: string }) =>
+    request<any>("/api/settings/supabase", { method: "POST", body: JSON.stringify(data) }),
+  test: (data: { supabase_url: string; supabase_anon_key: string }) =>
+    request<any>("/api/settings/supabase/test", { method: "POST", body: JSON.stringify(data) }),
 };
 
 // Sync
 export const syncApi = {
   export: (userId = "default") => request<any>(`/api/sync/export?user_id=${userId}`),
-  import: (data: { user_id?: string; entries: any[] }) =>
+  import: (data: { user_id?: string; entries?: any[]; moods?: any[]; conversations?: any[]; memories?: any[]; heroes?: any[]; attachments?: any[]; preferences?: any }) =>
     request<any>("/api/sync/import", { method: "POST", body: JSON.stringify(data) }),
 };
 
@@ -187,6 +214,7 @@ export const conversationApi = {
     entry_id?: string;
     message: string;
     template_key?: string;
+    current_step?: number;
   }) =>
     request<{ conversation_id: string; response: string; messages: any[] }>(
       "/api/conversations/send",
@@ -198,6 +226,7 @@ export const conversationApi = {
     entry_id?: string;
     message: string;
     template_key?: string;
+    current_step?: number;
   }) =>
     fetch(`${API_BASE}/api/conversations/send/stream`, {
       method: "POST",
@@ -237,4 +266,34 @@ export const settingsApi = {
     request<any>("/api/settings/ai", { method: "PUT", body: JSON.stringify(data) }),
   testAI: () =>
     request<{ status: string; provider: string; message: string }>("/api/settings/ai/test", { method: "POST" }),
+  resetAll: (confirmation: string) =>
+    request<any>("/api/settings/reset-all", { method: "POST", body: JSON.stringify({ confirmation }) }),
+  hasPassword: () => request<{ has_password: boolean }>("/api/settings/password"),
+  setPassword: (password: string, currentPassword?: string) =>
+    request<any>("/api/settings/password", {
+      method: "POST",
+      body: JSON.stringify({ password, current_password: currentPassword }),
+    }),
+  verifyPassword: (password: string) =>
+    request<{ verified: boolean }>("/api/settings/verify-password", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+  removePassword: (password: string) =>
+    request<any>("/api/settings/password", {
+      method: "DELETE",
+      body: JSON.stringify({ password }),
+    }),
+  getCurrentStep: () =>
+    request<{ current_step: number }>("/api/settings/current-step"),
+  setCurrentStep: (step: number) =>
+    request<{ current_step: number }>("/api/settings/current-step", {
+      method: "PUT",
+      body: JSON.stringify({ step }),
+    }),
+  checkForUpdates: async () => {
+    const res = await fetch("https://api.github.com/repos/TimKenobi/StepScribe/releases/latest");
+    if (!res.ok) throw new Error("Could not check for updates");
+    return res.json();
+  },
 };

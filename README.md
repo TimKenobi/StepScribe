@@ -17,7 +17,7 @@
 
 <p align="center">
   <a href="https://github.com/TimKenobi/StepScribe/releases"><img src="https://img.shields.io/github/v/release/TimKenobi/StepScribe?include_prereleases&style=flat-square&color=6b8aaf" alt="Latest Release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square" alt="License: GPL-3.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" alt="License: AGPL-3.0"></a>
 </p>
 
 StepScribe is a private recovery journaling companion designed for people in addiction recovery. It pairs a rich journaling experience with a persistent AI companion that learns about you over time — like a sponsor who actually remembers what you told them last week.
@@ -331,7 +331,7 @@ See [.env.example](.env.example) for all available settings. Key options:
 
 ## License
 
-This project is licensed under the [GNU General Public License v3.0](LICENSE).
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).
 
 ---
 

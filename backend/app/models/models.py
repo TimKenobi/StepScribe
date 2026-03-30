@@ -32,77 +32,6 @@ class User(Base):
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="user")
 
 
-# Available faith traditions — used by onboarding and AI context
-FAITH_TRADITIONS = {
-    "traditional_catholic": {
-        "label": "Traditional Catholic",
-        "description": "Latin Mass, devotion to the Saints, Rosary, sacramental life.",
-        "figures": ["St. Thomas Aquinas", "St. Augustine", "St. Thérèse of Lisieux", "St. Padre Pio", "Our Lady"],
-        "practices": ["Daily Rosary", "Examination of Conscience", "Confession", "Eucharistic Adoration", "Liturgy of the Hours"],
-    },
-    "roman_catholic": {
-        "label": "Roman Catholic",
-        "description": "Novus Ordo, parish life, social teaching, sacraments.",
-        "figures": ["St. Francis of Assisi", "St. Teresa of Calcutta", "St. John Paul II", "St. Ignatius of Loyola"],
-        "practices": ["Mass", "Rosary", "Lectio Divina", "Works of Mercy", "Confession"],
-    },
-    "eastern_orthodox": {
-        "label": "Eastern Orthodox",
-        "description": "Divine Liturgy, icons, the Jesus Prayer, theosis.",
-        "figures": ["St. John Chrysostom", "St. Seraphim of Sarov", "St. Theophan the Recluse"],
-        "practices": ["Jesus Prayer", "Fasting", "Divine Liturgy", "Icon veneration", "Confession"],
-    },
-    "protestant": {
-        "label": "Protestant / Evangelical",
-        "description": "Scripture-centered, personal relationship with Christ, community.",
-        "figures": ["Dietrich Bonhoeffer", "C.S. Lewis", "Charles Spurgeon", "Corrie ten Boom"],
-        "practices": ["Bible study", "Prayer", "Worship", "Small groups", "Devotionals"],
-    },
-    "jewish": {
-        "label": "Jewish",
-        "description": "Torah, Talmud, mitzvot, the rhythm of Shabbat and holy days.",
-        "figures": ["Rabbi Nachman of Breslov", "Maimonides", "Viktor Frankl", "Abraham Joshua Heschel"],
-        "practices": ["Shabbat", "Torah study", "Prayer", "Tikkun olam", "Musar"],
-    },
-    "buddhist": {
-        "label": "Buddhist",
-        "description": "The Eightfold Path, mindfulness, compassion, letting go of attachment.",
-        "figures": ["Thich Nhat Hanh", "Pema Chödrön", "The Dalai Lama", "Shunryu Suzuki"],
-        "practices": ["Meditation", "Mindfulness", "Right speech", "Loving-kindness", "Sangha"],
-    },
-    "muslim": {
-        "label": "Muslim",
-        "description": "The Five Pillars, Quran, surrender to God, community (ummah).",
-        "figures": ["Rumi", "Imam al-Ghazali", "Malcolm X"],
-        "practices": ["Salah (prayer)", "Quran recitation", "Dhikr", "Fasting", "Charity"],
-    },
-    "stoic_philosophical": {
-        "label": "Stoic / Philosophical",
-        "description": "Virtue ethics, focus on what you can control, rational self-examination.",
-        "figures": ["Marcus Aurelius", "Epictetus", "Seneca", "Viktor Frankl"],
-        "practices": ["Morning reflection", "Evening review", "Negative visualization", "Journaling", "Memento mori"],
-    },
-    "spiritual_not_religious": {
-        "label": "Spiritual but Not Religious",
-        "description": "Higher Power as you understand it. The 12-step tradition of open spirituality.",
-        "figures": ["Bill W.", "Carl Jung", "Joseph Campbell", "Ram Dass"],
-        "practices": ["Meditation", "Gratitude", "Prayer to Higher Power", "Service", "Step work"],
-    },
-    "secular": {
-        "label": "Secular / Non-Religious",
-        "description": "Recovery through reason, community, personal responsibility, and human connection.",
-        "figures": ["Albert Camus", "Viktor Frankl", "Brené Brown", "Jordan Peterson"],
-        "practices": ["Journaling", "Cognitive reframing", "Community service", "Self-reflection", "Rational self-analysis"],
-    },
-    "other": {
-        "label": "Other",
-        "description": "A tradition not listed here. You can describe it and the AI will adapt.",
-        "figures": [],
-        "practices": [],
-    },
-}
-
-
 class UserPreferences(Base):
     __tablename__ = "user_preferences"
 
@@ -111,6 +40,7 @@ class UserPreferences(Base):
     faith_tradition: Mapped[str] = mapped_column(String(50), default="")
     faith_notes: Mapped[str] = mapped_column(Text, default="")
     about_me: Mapped[str] = mapped_column(Text, default="")
+    current_step: Mapped[int] = mapped_column(Integer, default=0)
     onboarding_complete: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
@@ -186,6 +116,7 @@ class UserHero(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    quotes: Mapped[list] = mapped_column(JSON, default=list)
 
     user: Mapped["User"] = relationship(back_populates="heroes")
 
@@ -302,4 +233,5 @@ class AppConfig(Base):
     custom_ai_base_url: Mapped[str] = mapped_column(String(500), default="")
     custom_ai_api_key: Mapped[str] = mapped_column(Text, default="")
     custom_ai_model: Mapped[str] = mapped_column(String(100), default="")
+    app_password_hash: Mapped[str] = mapped_column(Text, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)

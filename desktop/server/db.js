@@ -109,6 +109,17 @@ async function createTables() {
       sort_order INTEGER DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS user_quotes (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id),
+      text TEXT NOT NULL,
+      author TEXT DEFAULT '',
+      source TEXT DEFAULT '',
+      category TEXT DEFAULT 'general',
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS group_journals (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -201,6 +212,12 @@ async function createTables() {
     ["user_preferences", "about_me", "TEXT DEFAULT ''"],
     ["journal_entries", "sections_included", "TEXT"],
     ["journal_entries", "entry_date", "TEXT"],
+    ["user_heroes", "quotes", "TEXT DEFAULT '[]'"],
+    ["app_config", "app_password_hash", "TEXT DEFAULT ''"],
+    ["user_preferences", "current_step", "INTEGER DEFAULT 0"],
+    ["app_config", "supabase_url", "TEXT DEFAULT ''"],
+    ["app_config", "supabase_anon_key", "TEXT DEFAULT ''"],
+    ["app_config", "supabase_display_name", "TEXT DEFAULT ''"],
   ];
   for (const [table, column, colType] of migrations) {
     try {

@@ -9,7 +9,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const { getOne, getAll, run, getClient, uuid, now } = require("./db");
 const ai = require("./ai");
-const { getSystemPrompt, getSystemPromptWithHeroes, getTemplate, getAllTemplates } = require("./sponsor");
+const { getSystemPrompt, getSystemPromptWithHeroes, getTemplate, getAllTemplates, getStepContext } = require("./sponsor");
 const {
   FAITH_TRADITIONS, MOOD_WEATHER, DEFAULT_HEROES, MEMORY_CATEGORIES,
   RECOMMENDED_MODELS, STEP_COMPANION_MODELFILE,
@@ -190,7 +190,12 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
   app.get("/api/heroes/", asyncHandler(async (req, res) => {
     const { user_id = "default" } = req.query;
     const heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 ORDER BY sort_order", [user_id]);
-    res.json(heroes.map(h => ({ ...h, is_active: !!h.is_active })));
+    res.json(heroes.map(h => {
+      let quotes = [];
+      try { quotes = typeof h.quotes === "string" ? JSON.parse(h.quotes) : (h.quotes || []); } catch {}
+      if (!Array.isArray(quotes)) quotes = [];
+      return { ...h, is_active: !!h.is_active, quotes };
+    }));
   }));
 
   app.post("/api/heroes/", asyncHandler(async (req, res) => {
@@ -198,7 +203,7 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
     const id = uuid();
     await run("INSERT INTO user_heroes (id, user_id, name, description) VALUES ($1, $2, $3, $4)", [id, user_id, name, description]);
     const hero = await getOne("SELECT * FROM user_heroes WHERE id = $1", [id]);
-    res.json({ ...hero, is_active: !!hero.is_active });
+    res.json({ ...hero, is_active: !!hero.is_active, quotes: [] });
   }));
 
   app.delete("/api/heroes/:id", asyncHandler(async (req, res) => {
@@ -214,6 +219,146 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
     const newVal = !hero.is_active;
     await run("UPDATE user_heroes SET is_active = $1 WHERE id = $2", [newVal, req.params.id]);
     res.json({ id: hero.id, is_active: newVal });
+  }));
+
+  // Hero quotes + standalone user quotes — return all for the rotator
+  app.get("/api/heroes/quotes", asyncHandler(async (req, res) => {
+    const { user_id = "default" } = req.query;
+    const heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [user_id]);
+    const quotes = [];
+    for (const hero of heroes) {
+      let heroQuotes = [];
+      try { heroQuotes = typeof hero.quotes === "string" ? JSON.parse(hero.quotes) : (hero.quotes || []); } catch {}
+      for (const q of heroQuotes) {
+        if (q && q.text) {
+          quotes.push({ author: hero.name, text: q.text, source: q.source || "" });
+        }
+      }
+    }
+    // Also include standalone user quotes
+    const userQuotes = await getAll("SELECT * FROM user_quotes WHERE user_id = $1 AND is_active = TRUE ORDER BY created_at DESC", [user_id]);
+    for (const uq of userQuotes) {
+      quotes.push({ author: uq.author || "", text: uq.text, source: uq.source || "" });
+    }
+    res.json(quotes);
+  }));
+
+  // Search quotes for a hero via Goodreads scraping (real verified quotes)
+  app.post("/api/heroes/search-quotes", asyncHandler(async (req, res) => {
+    const { name } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ detail: "Hero name is required" });
+    try {
+      const searchUrl = `https://www.goodreads.com/quotes/search?q=${encodeURIComponent(name.trim())}`;
+      const resp = await fetch(searchUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+      });
+      if (!resp.ok) throw new Error(`Goodreads returned ${resp.status}`);
+      const html = await resp.text();
+
+      // Parse quotes from Goodreads HTML — quotes live in <div class="quoteText">
+      // Goodreads uses &ldquo; / &rdquo; HTML entities for curly quotes
+      const quotes = [];
+      const quoteBlocks = html.split('class="quoteText"');
+      for (let i = 1; i < quoteBlocks.length && quotes.length < 8; i++) {
+        const block = quoteBlocks[i];
+        // Match text between &ldquo; ... &rdquo; HTML entities
+        const textMatch = block.match(/&ldquo;([\s\S]*?)&rdquo;/);
+        if (!textMatch) continue;
+        const text = textMatch[1]
+          .replace(/<br\s*\/?>/gi, " ")
+          .replace(/<[^>]+>/g, "")
+          .replace(/&ldquo;/g, "\u201C").replace(/&rdquo;/g, "\u201D")
+          .replace(/&lsquo;/g, "\u2018").replace(/&rsquo;/g, "\u2019")
+          .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+          .replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+          .replace(/&mdash;/g, "\u2014").replace(/&ndash;/g, "\u2013")
+          .replace(/\s+/g, " ").trim();
+        if (!text || text.length < 10) continue;
+
+        // Extract source (book title) from <em> inside authorOrTitle link
+        let source = "";
+        const sourceMatch = block.match(/<em[^>]*>([^<]+)<\/em>/i);
+        if (sourceMatch) source = sourceMatch[1].replace(/&amp;/g, "&").trim();
+
+        quotes.push({ text, source });
+      }
+
+      if (quotes.length > 0) {
+        return res.json({ quotes });
+      }
+      // If Goodreads didn't return results, fall back to AI
+      throw new Error("No quotes found on Goodreads");
+    } catch (goodreadsErr) {
+      // Fallback: try AI search
+      try {
+        const prompt = `Find 5 real, famous, verified quotes by "${name.trim()}".
+Only include quotes that are genuinely attributed to this person.
+If this person is not a public figure or you cannot find verified quotes, return an empty array.
+Do NOT make up quotes. Do NOT attribute quotes to the wrong person.
+
+Return ONLY a JSON array of objects with "text" and "source" fields. Example:
+[{"text": "The quote text here.", "source": "Book or Speech name"}]
+
+If no verified quotes exist, return: []`;
+        const response = await ai.chat([{ role: "user", content: prompt }], 0.2);
+        let cleaned = response.trim();
+        if (cleaned.startsWith("```")) cleaned = cleaned.split("\n").slice(1).join("\n").replace(/```/g, "");
+        const parsed = JSON.parse(cleaned);
+        if (!Array.isArray(parsed)) return res.json({ quotes: [] });
+        const safeQuotes = parsed.slice(0, 10).filter(q => q && q.text).map(q => ({
+          text: String(q.text).slice(0, 500),
+          source: String(q.source || "").slice(0, 200),
+        }));
+        res.json({ quotes: safeQuotes });
+      } catch {
+        res.json({ quotes: [] });
+      }
+    }
+  }));
+
+  // Save quotes on a hero
+  app.patch("/api/heroes/:id/quotes", asyncHandler(async (req, res) => {
+    const hero = await getOne("SELECT * FROM user_heroes WHERE id = $1", [req.params.id]);
+    if (!hero) return res.status(404).json({ detail: "Hero not found" });
+    const quotes = (req.body.quotes || []).slice(0, 20).filter(q => q && q.text).map(q => ({
+      text: String(q.text).slice(0, 500),
+      source: String(q.source || "").slice(0, 200),
+    }));
+    await run("UPDATE user_heroes SET quotes = $1 WHERE id = $2", [JSON.stringify(quotes), req.params.id]);
+    res.json({ id: hero.id, quotes });
+  }));
+
+  // ══════════════════════════════════════
+  // Standalone Quotes / Passages
+  // ══════════════════════════════════════
+  app.get("/api/quotes/", asyncHandler(async (req, res) => {
+    const { user_id = "default" } = req.query;
+    const quotes = await getAll("SELECT * FROM user_quotes WHERE user_id = $1 ORDER BY created_at DESC", [user_id]);
+    res.json(quotes);
+  }));
+
+  app.post("/api/quotes/", asyncHandler(async (req, res) => {
+    const { user_id = "default", text, author = "", source = "", category = "general" } = req.body;
+    if (!text || !text.trim()) return res.status(400).json({ detail: "Quote text is required" });
+    const id = crypto.randomUUID();
+    await run(
+      "INSERT INTO user_quotes (id, user_id, text, author, source, category) VALUES ($1, $2, $3, $4, $5, $6)",
+      [id, user_id, String(text).slice(0, 1000), String(author).slice(0, 200), String(source).slice(0, 300), String(category).slice(0, 50)]
+    );
+    res.json({ id, user_id, text, author, source, category, is_active: true });
+  }));
+
+  app.delete("/api/quotes/:id", asyncHandler(async (req, res) => {
+    await run("DELETE FROM user_quotes WHERE id = $1", [req.params.id]);
+    res.json({ ok: true });
+  }));
+
+  app.patch("/api/quotes/:id/toggle", asyncHandler(async (req, res) => {
+    const q = await getOne("SELECT * FROM user_quotes WHERE id = $1", [req.params.id]);
+    if (!q) return res.status(404).json({ detail: "Quote not found" });
+    const newVal = !q.is_active;
+    await run("UPDATE user_quotes SET is_active = $1 WHERE id = $2", [newVal, req.params.id]);
+    res.json({ id: q.id, is_active: newVal });
   }));
 
   // ══════════════════════════════════════
@@ -517,7 +662,7 @@ Rules:
   }));
 
   app.post("/api/conversations/send", asyncHandler(async (req, res) => {
-    const { user_id = "default", conversation_id, entry_id, message, template_key } = req.body;
+    const { user_id = "default", conversation_id, entry_id, message, template_key, current_step } = req.body;
     try {
       let convo = conversation_id ? await getOne("SELECT * FROM conversations WHERE id = $1", [conversation_id]) : null;
       if (!convo) {
@@ -528,8 +673,11 @@ Rules:
         convo = await getOne("SELECT * FROM conversations WHERE id = $1", [newId]);
       }
       const memCtx = await getMemoryContext(user_id);
-      let system = getSystemPrompt();
-      if (memCtx) system += "\n\n" + memCtx;
+      const prefs = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [user_id]);
+      const heroNames = (await getAll("SELECT name FROM user_heroes WHERE user_id = $1 AND is_active = TRUE", [user_id])).map(h => h.name);
+      let system = getSystemPromptWithHeroes(heroNames, prefs?.faith_tradition || "", prefs?.faith_notes || "", memCtx.heroQuotes || {});
+      if (memCtx.text) system += "\n\n" + memCtx.text;
+      if (current_step) system += getStepContext(current_step);
       const eid = entry_id || convo.entry_id;
       if (eid) {
         const entry = await getOne("SELECT * FROM journal_entries WHERE id = $1", [eid]);
@@ -566,7 +714,7 @@ Rules:
   }));
 
   app.post("/api/conversations/send/stream", asyncHandler(async (req, res) => {
-    const { user_id = "default", conversation_id, entry_id, message, template_key } = req.body;
+    const { user_id = "default", conversation_id, entry_id, message, template_key, current_step } = req.body;
     try {
       let convo = conversation_id ? await getOne("SELECT * FROM conversations WHERE id = $1", [conversation_id]) : null;
       if (!convo) {
@@ -581,8 +729,11 @@ Rules:
       res.setHeader("Connection", "keep-alive");
       res.setHeader("X-Conversation-Id", convo.id);
       const memCtx = await getMemoryContext(user_id);
-      let system = getSystemPrompt();
-      if (memCtx) system += "\n\n" + memCtx;
+      const prefs = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [user_id]);
+      const heroNames = (await getAll("SELECT name FROM user_heroes WHERE user_id = $1 AND is_active = TRUE", [user_id])).map(h => h.name);
+      let system = getSystemPromptWithHeroes(heroNames, prefs?.faith_tradition || "", prefs?.faith_notes || "", memCtx.heroQuotes || {});
+      if (memCtx.text) system += "\n\n" + memCtx.text;
+      if (current_step) system += getStepContext(current_step);
       const eid = entry_id || convo.entry_id;
       if (eid) {
         const entry = await getOne("SELECT * FROM journal_entries WHERE id = $1", [eid]);
@@ -695,30 +846,255 @@ Rules:
     await run("INSERT INTO group_members (id, group_id, user_id, role) VALUES ($1, $2, $3, 'sponsor')",
       [uuid(), id, created_by]);
     const group = await getOne("SELECT * FROM group_journals WHERE id = $1", [id]);
+    // Sync to Supabase if configured
+    await supabaseSync("groups", "POST", { id, name, description, created_by, invite_code: inviteCode, created_at: now() });
+    await supabaseSync("group_members", "POST", { id: uuid(), group_id: id, user_id: created_by, display_name: await getSupabaseDisplayName(), role: "sponsor", joined_at: now() });
+    group.share_code = await makeShareCode(inviteCode);
     res.json(group);
   }));
 
   app.post("/api/groups/join", asyncHandler(async (req, res) => {
-    const { user_id, invite_code, role = "member" } = req.body;
-    const group = await getOne("SELECT * FROM group_journals WHERE invite_code = $1", [invite_code]);
+    const { user_id, invite_code: rawCode, role = "member" } = req.body;
+
+    // Try to decode as composite share code (contains Supabase URL + key + invite code)
+    let actualCode = rawCode;
+    const composite = parseShareCode(rawCode);
+    if (composite) {
+      actualCode = composite.c;
+      // Auto-configure Supabase if not already set up
+      const existingConfig = await getSupabaseConfig();
+      if (!existingConfig) {
+        await run(
+          `UPDATE app_config SET supabase_url = $1, supabase_anon_key = $2 WHERE id = 'default'`,
+          [composite.u, composite.k]);
+      }
+    }
+
+    // Try local first
+    let group = await getOne("SELECT * FROM group_journals WHERE invite_code = $1", [actualCode]);
+    if (!group) {
+      // Try pulling from Supabase
+      const remoteGroup = await supabaseFetch("groups", `?invite_code=eq.${encodeURIComponent(actualCode)}&limit=1`);
+      if (remoteGroup && remoteGroup.length > 0) {
+        const rg = remoteGroup[0];
+        await run("INSERT INTO group_journals (id, name, description, created_by, invite_code, created_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING",
+          [rg.id, rg.name, rg.description || "", rg.created_by, rg.invite_code, rg.created_at || now()]);
+        group = await getOne("SELECT * FROM group_journals WHERE id = $1", [rg.id]);
+      }
+    }
     if (!group) return res.status(404).json({ detail: "Invalid invite code" });
     const existing = await getOne("SELECT * FROM group_members WHERE group_id = $1 AND user_id = $2", [group.id, user_id]);
     if (existing) return res.status(400).json({ detail: "Already a member" });
-    await run("INSERT INTO group_members (id, group_id, user_id, role) VALUES ($1, $2, $3, $4)", [uuid(), group.id, user_id, role]);
+    const memberId = uuid();
+    await run("INSERT INTO group_members (id, group_id, user_id, role) VALUES ($1, $2, $3, $4)", [memberId, group.id, user_id, role]);
+    await supabaseSync("group_members", "POST", { id: memberId, group_id: group.id, user_id, display_name: await getSupabaseDisplayName(), role, joined_at: now() });
     res.json({ joined: true, group_name: group.name });
   }));
 
   app.post("/api/groups/share", asyncHandler(async (req, res) => {
-    const { entry_id, group_id, shared_by } = req.body;
+    const { entry_id, group_id, shared_by, title = "", content = "" } = req.body;
+    const shareId = uuid();
     await run("INSERT INTO shared_entries (id, entry_id, group_id, shared_by, shared_at) VALUES ($1, $2, $3, $4, $5)",
-      [uuid(), entry_id, group_id, shared_by, now()]);
+      [shareId, entry_id, group_id, shared_by, now()]);
+    // Sync shared entry content to Supabase (just title + content, not the full entry)
+    const entry = await getOne("SELECT title, content FROM journal_entries WHERE id = $1", [entry_id]);
+    await supabaseSync("shared_entries", "POST", {
+      id: shareId, group_id, shared_by, display_name: await getSupabaseDisplayName(),
+      title: title || entry?.title || "Untitled", content: content || entry?.content || "",
+      shared_at: now(),
+    });
     res.json({ shared: true });
   }));
 
   app.get("/api/groups/:userId", asyncHandler(async (req, res) => {
     const groups = await getAll("SELECT g.* FROM group_journals g JOIN group_members m ON m.group_id = g.id WHERE m.user_id = $1",
       [req.params.userId]);
+    for (const g of groups) {
+      g.share_code = await makeShareCode(g.invite_code);
+    }
     res.json(groups);
+  }));
+
+  // Pull shared entries from Supabase for a group
+  app.get("/api/groups/:groupId/shared", asyncHandler(async (req, res) => {
+    const remote = await supabaseFetch("shared_entries", `?group_id=eq.${req.params.groupId}&order=shared_at.desc&limit=50`);
+    if (remote && remote.length > 0) return res.json(remote);
+    // Fallback to local
+    const local = await getAll(
+      `SELECT se.*, je.title, je.content FROM shared_entries se LEFT JOIN journal_entries je ON je.id = se.entry_id WHERE se.group_id = $1 ORDER BY se.shared_at DESC`,
+      [req.params.groupId]
+    );
+    res.json(local);
+  }));
+
+  // Pull group members from Supabase
+  app.get("/api/groups/:groupId/members", asyncHandler(async (req, res) => {
+    const remote = await supabaseFetch("group_members", `?group_id=eq.${req.params.groupId}&order=joined_at`);
+    if (remote && remote.length > 0) return res.json(remote);
+    const local = await getAll("SELECT * FROM group_members WHERE group_id = $1 ORDER BY joined_at", [req.params.groupId]);
+    res.json(local);
+  }));
+
+  // Sync all groups from Supabase (pull)
+  app.post("/api/groups/sync/pull", asyncHandler(async (req, res) => {
+    const { user_id = "default" } = req.body;
+    const config = await getOne("SELECT supabase_url, supabase_anon_key FROM app_config WHERE id = 'default'", []);
+    if (!config?.supabase_url || !config?.supabase_anon_key) return res.json({ synced: false, reason: "Supabase not configured" });
+
+    // Pull groups where I'm a member
+    const myMemberships = await supabaseFetch("group_members", `?user_id=eq.${encodeURIComponent(user_id)}`);
+    if (!myMemberships || !myMemberships.length) return res.json({ synced: true, groups: 0 });
+
+    let count = 0;
+    for (const m of myMemberships) {
+      const remoteGroups = await supabaseFetch("groups", `?id=eq.${m.group_id}`);
+      if (remoteGroups && remoteGroups.length > 0) {
+        const rg = remoteGroups[0];
+        await run("INSERT INTO group_journals (id, name, description, created_by, invite_code, created_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET name = $2, description = $3",
+          [rg.id, rg.name, rg.description || "", rg.created_by, rg.invite_code, rg.created_at || now()]);
+        const existingMember = await getOne("SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2", [rg.id, user_id]);
+        if (!existingMember) {
+          await run("INSERT INTO group_members (id, group_id, user_id, role) VALUES ($1, $2, $3, $4)", [uuid(), rg.id, user_id, m.role || "member"]);
+        }
+        count++;
+      }
+    }
+    res.json({ synced: true, groups: count });
+  }));
+
+  // ══════════════════════════════════════
+  // Supabase Cloud Sync Helper
+  // ══════════════════════════════════════
+
+  // Composite share codes embed Supabase URL+key+invite_code so joining users auto-configure
+  async function makeShareCode(inviteCode) {
+    const config = await getSupabaseConfig();
+    if (!config) return inviteCode; // No Supabase = plain code
+    const payload = JSON.stringify({ u: config.url, k: config.key, c: inviteCode });
+    return Buffer.from(payload).toString("base64url");
+  }
+
+  function parseShareCode(code) {
+    try {
+      const json = Buffer.from(code, "base64url").toString("utf8");
+      const parsed = JSON.parse(json);
+      if (parsed.u && parsed.k && parsed.c) return parsed;
+    } catch {}
+    return null; // Not a composite code
+  }
+
+  async function getSupabaseConfig() {
+    const config = await getOne("SELECT supabase_url, supabase_anon_key, supabase_display_name FROM app_config WHERE id = 'default'", []);
+    if (!config?.supabase_url || !config?.supabase_anon_key) return null;
+    return { url: config.supabase_url.replace(/\/$/, ""), key: config.supabase_anon_key, displayName: config.supabase_display_name || "Anonymous" };
+  }
+
+  async function getSupabaseDisplayName() {
+    const config = await getSupabaseConfig();
+    return config?.displayName || "Anonymous";
+  }
+
+  async function supabaseSync(table, method, data) {
+    try {
+      const config = await getSupabaseConfig();
+      if (!config) return null;
+      const res = await fetch(`${config.url}/rest/v1/${table}`, {
+        method,
+        headers: {
+          "apikey": config.key,
+          "Authorization": `Bearer ${config.key}`,
+          "Content-Type": "application/json",
+          "Prefer": "return=minimal",
+        },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        console.log(`[Supabase] ${method} ${table} failed: ${res.status} ${text}`);
+      }
+      return res.ok;
+    } catch (e) {
+      console.log(`[Supabase] sync error: ${e.message}`);
+      return null;
+    }
+  }
+
+  async function supabaseFetch(table, query = "") {
+    try {
+      const config = await getSupabaseConfig();
+      if (!config) return null;
+      const res = await fetch(`${config.url}/rest/v1/${table}${query}`, {
+        headers: {
+          "apikey": config.key,
+          "Authorization": `Bearer ${config.key}`,
+        },
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  // Supabase settings endpoints
+  app.get("/api/settings/supabase", asyncHandler(async (req, res) => {
+    const config = await getOne("SELECT supabase_url, supabase_anon_key, supabase_display_name FROM app_config WHERE id = 'default'", []);
+    res.json({
+      supabase_url: config?.supabase_url || "",
+      supabase_anon_key: config?.supabase_anon_key ? "••••••••" + (config.supabase_anon_key.slice(-8) || "") : "",
+      supabase_display_name: config?.supabase_display_name || "",
+      configured: !!(config?.supabase_url && config?.supabase_anon_key),
+    });
+  }));
+
+  app.post("/api/settings/supabase", asyncHandler(async (req, res) => {
+    const { supabase_url, supabase_anon_key, supabase_display_name } = req.body;
+    const updates = [];
+    const values = [];
+    let idx = 1;
+    if (supabase_url !== undefined) { updates.push(`supabase_url = $${idx++}`); values.push(supabase_url); }
+    if (supabase_anon_key !== undefined && !supabase_anon_key.includes("••")) { updates.push(`supabase_anon_key = $${idx++}`); values.push(supabase_anon_key); }
+    if (supabase_display_name !== undefined) { updates.push(`supabase_display_name = $${idx++}`); values.push(supabase_display_name); }
+    if (updates.length) {
+      await run(`UPDATE app_config SET ${updates.join(", ")} WHERE id = 'default'`, values);
+    }
+    res.json({ saved: true });
+  }));
+
+  app.post("/api/settings/supabase/test", asyncHandler(async (req, res) => {
+    let { supabase_url, supabase_anon_key } = req.body;
+    const url = (supabase_url || "").replace(/\/$/, "");
+
+    // If key is masked (from the GET endpoint), use the stored key from DB
+    if (supabase_anon_key && supabase_anon_key.includes("••")) {
+      const saved = await getOne("SELECT supabase_anon_key FROM app_config WHERE id = 'default'", []);
+      if (saved?.supabase_anon_key) {
+        supabase_anon_key = saved.supabase_anon_key;
+      } else {
+        return res.json({ ok: false, error: "No saved API key found. Please re-enter your Supabase anon key." });
+      }
+    }
+
+    if (!url || !supabase_anon_key) return res.json({ ok: false, error: "URL and key are required" });
+    try {
+      const r = await fetch(`${url}/rest/v1/groups?limit=1`, {
+        headers: { "apikey": supabase_anon_key, "Authorization": `Bearer ${supabase_anon_key}` },
+      });
+      if (r.ok) return res.json({ ok: true });
+      const text = await r.text();
+      if (r.status === 404 || text.includes("does not exist")) {
+        return res.json({ ok: false, error: "Connected, but tables not found. Run the SQL setup in Supabase first." });
+      }
+      return res.json({ ok: false, error: `HTTP ${r.status}: ${text.slice(0, 200)}` });
+    } catch (e) {
+      if (e.cause?.code === "ENOTFOUND" || e.message?.includes("ENOTFOUND")) {
+        return res.json({ ok: false, error: "Could not reach Supabase. The project may be paused or the URL is incorrect." });
+      }
+      if (e.cause?.code === "ECONNREFUSED" || e.message?.includes("ECONNREFUSED")) {
+        return res.json({ ok: false, error: "Connection refused. The Supabase project may be paused — check your Supabase dashboard." });
+      }
+      return res.json({ ok: false, error: e.message || "Unknown connection error" });
+    }
   }));
 
   // ══════════════════════════════════════
@@ -752,18 +1128,20 @@ Rules:
   }));
 
   app.post("/api/sync/import", asyncHandler(async (req, res) => {
-    const { user_id = "default", entries = [] } = req.body;
-    let imported = 0, updated = 0;
+    const { user_id = "default", entries = [], moods = [], conversations = [], memories = [], heroes = [], attachments = [], preferences } = req.body;
+    const counts = { entries_imported: 0, entries_updated: 0, moods: 0, conversations: 0, memories: 0, heroes: 0, attachments: 0 };
     const client = await getClient();
     try {
       await client.query("BEGIN");
+
+      // --- Journal entries + inline mood data ---
       for (const se of entries) {
         if (se.id) {
           const { rows } = await client.query("SELECT * FROM journal_entries WHERE id = $1", [se.id]);
           if (rows[0]) {
             await client.query("UPDATE journal_entries SET title = $1, content = $2, content_html = $3, prompt_used = $4, is_draft = $5, updated_at = $6 WHERE id = $7",
               [se.title, se.content, se.content_html, se.prompt_used, !!se.is_draft, now(), se.id]);
-            updated++;
+            counts.entries_updated++;
             continue;
           }
         }
@@ -771,11 +1149,65 @@ Rules:
         await client.query("INSERT INTO journal_entries (id, user_id, title, content, content_html, prompt_used, is_draft, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
           [entryId, user_id, se.title, se.content, se.content_html, se.prompt_used, !!se.is_draft, se.created_at || now(), now()]);
         if (se.mood_weather) {
-          await client.query("INSERT INTO mood_entries (id, user_id, entry_id, weather, note, energy_level, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+          await client.query("INSERT INTO mood_entries (id, user_id, entry_id, weather, note, energy_level, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING",
             [uuid(), user_id, entryId, se.mood_weather, se.mood_note || "", se.mood_energy || 5, now()]);
         }
-        imported++;
+        counts.entries_imported++;
       }
+
+      // --- Standalone mood entries ---
+      for (const m of moods) {
+        if (!m.id) continue;
+        await client.query(
+          "INSERT INTO mood_entries (id, user_id, entry_id, weather, note, energy_level, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO UPDATE SET weather = $4, note = $5, energy_level = $6",
+          [m.id, user_id, m.entry_id || null, m.weather, m.note || "", m.energy_level ?? 5, m.created_at || now()]);
+        counts.moods++;
+      }
+
+      // --- Conversations ---
+      for (const c of conversations) {
+        if (!c.id) continue;
+        const msgs = typeof c.messages === "string" ? c.messages : JSON.stringify(c.messages || []);
+        await client.query(
+          "INSERT INTO conversations (id, user_id, entry_id, messages, is_active, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO UPDATE SET messages = $4, is_active = $5, updated_at = $7",
+          [c.id, user_id, c.entry_id || null, msgs, c.is_active !== false, c.created_at || now(), now()]);
+        counts.conversations++;
+      }
+
+      // --- AI memories ---
+      for (const m of memories) {
+        if (!m.id) continue;
+        await client.query(
+          "INSERT INTO ai_memories (id, user_id, category, content, source, source_id, is_active, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO UPDATE SET category = $3, content = $4, is_active = $7, updated_at = $9",
+          [m.id, user_id, m.category, m.content, m.source || "conversation", m.source_id || null, m.is_active !== false, m.created_at || now(), now()]);
+        counts.memories++;
+      }
+
+      // --- Heroes ---
+      for (const h of heroes) {
+        if (!h.id) continue;
+        await client.query(
+          "INSERT INTO user_heroes (id, user_id, name, description, is_active, sort_order) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET name = $3, description = $4, is_active = $5, sort_order = $6",
+          [h.id, user_id, h.name, h.description || "", h.is_active !== false, h.sort_order ?? 0]);
+        counts.heroes++;
+      }
+
+      // --- Attachments (metadata only — files must exist) ---
+      for (const a of attachments) {
+        if (!a.id) continue;
+        await client.query(
+          "INSERT INTO attachments (id, user_id, entry_id, filename, original_name, content_type, size_bytes, caption, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO NOTHING",
+          [a.id, user_id, a.entry_id || null, a.filename, a.original_name, a.content_type, a.size_bytes || 0, a.caption || "", a.created_at || now()]);
+        counts.attachments++;
+      }
+
+      // --- User preferences ---
+      if (preferences) {
+        await client.query(
+          `UPDATE user_preferences SET faith_tradition = COALESCE($1, faith_tradition), faith_notes = COALESCE($2, faith_notes), about_me = COALESCE($3, about_me), onboarding_complete = $4, updated_at = $5 WHERE user_id = $6`,
+          [preferences.faith_tradition || "", preferences.faith_notes || "", preferences.about_me || "", !!preferences.onboarding_complete, now(), user_id]);
+      }
+
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");
@@ -783,7 +1215,7 @@ Rules:
     } finally {
       client.release();
     }
-    res.json({ imported, updated });
+    res.json({ imported: counts.entries_imported, updated: counts.entries_updated, ...counts });
   }));
 
   // ══════════════════════════════════════
@@ -913,6 +1345,117 @@ Rules:
       res.json({ status: "error", provider: s.ai_provider, message: e.message.slice(0, 300) });
     }
   });
+
+  // ══════════════════════════════════════
+  // Factory Reset — clears all user data, preserves AI config
+  // ══════════════════════════════════════
+  app.post("/api/settings/reset-all", asyncHandler(async (req, res) => {
+    const { confirmation } = req.body;
+    if (confirmation !== "RESET") {
+      return res.status(400).json({ detail: "Type RESET to confirm factory reset." });
+    }
+    const tables = [
+      "conversations", "ai_memories", "mood_entries", "shared_entries",
+      "attachments", "group_members", "group_journals", "user_heroes",
+    ];
+    for (const table of tables) {
+      await run(`DELETE FROM ${table}`);
+    }
+    // Delete journal entries (conversations reference them via entry_id already deleted)
+    await run("DELETE FROM journal_entries");
+    // Reset preferences but keep the row
+    await run("UPDATE user_preferences SET faith_tradition = '', faith_notes = '', about_me = '', onboarding_complete = FALSE");
+    // Clear password but keep AI config
+    await run("UPDATE app_config SET app_password_hash = '' WHERE id = 'default'");
+    // Clean up upload files
+    try {
+      const files = fs.readdirSync(uploadDir);
+      for (const file of files) {
+        fs.unlinkSync(path.join(uploadDir, file));
+      }
+    } catch {}
+    res.json({ status: "ok", message: "All data has been reset." });
+  }));
+
+  // ══════════════════════════════════════
+  // Password Protection
+  // ══════════════════════════════════════
+  app.get("/api/settings/password", asyncHandler(async (req, res) => {
+    const config = await getOne("SELECT app_password_hash FROM app_config WHERE id = 'default'");
+    res.json({ has_password: !!(config && config.app_password_hash) });
+  }));
+
+  app.post("/api/settings/password", asyncHandler(async (req, res) => {
+    const { password, current_password } = req.body;
+    if (!password || password.length < 4) {
+      return res.status(400).json({ detail: "Password must be at least 4 characters." });
+    }
+    // If there's an existing password, verify it first
+    const config = await getOne("SELECT app_password_hash FROM app_config WHERE id = 'default'");
+    if (config && config.app_password_hash) {
+      if (!current_password) return res.status(400).json({ detail: "Current password required." });
+      const [salt, hash] = config.app_password_hash.split(":");
+      const check = crypto.pbkdf2Sync(current_password, salt, 100000, 64, "sha512").toString("hex");
+      if (check !== hash) return res.status(403).json({ detail: "Current password is incorrect." });
+    }
+    const salt = crypto.randomBytes(16).toString("hex");
+    const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
+    let existing = await getOne("SELECT * FROM app_config WHERE id = 'default'");
+    if (!existing) {
+      await run("INSERT INTO app_config (id, app_password_hash) VALUES ('default', $1)", [`${salt}:${hash}`]);
+    } else {
+      await run("UPDATE app_config SET app_password_hash = $1 WHERE id = 'default'", [`${salt}:${hash}`]);
+    }
+    res.json({ status: "ok", has_password: true });
+  }));
+
+  app.post("/api/settings/verify-password", asyncHandler(async (req, res) => {
+    const { password } = req.body;
+    const config = await getOne("SELECT app_password_hash FROM app_config WHERE id = 'default'");
+    if (!config || !config.app_password_hash) {
+      return res.json({ verified: true }); // No password set
+    }
+    if (!password) return res.json({ verified: false });
+    const [salt, hash] = config.app_password_hash.split(":");
+    const check = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
+    res.json({ verified: check === hash });
+  }));
+
+  app.delete("/api/settings/password", asyncHandler(async (req, res) => {
+    const { password } = req.body;
+    const config = await getOne("SELECT app_password_hash FROM app_config WHERE id = 'default'");
+    if (!config || !config.app_password_hash) {
+      return res.json({ status: "ok", has_password: false });
+    }
+    if (!password) return res.status(400).json({ detail: "Password required to remove protection." });
+    const [salt, hash] = config.app_password_hash.split(":");
+    const check = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
+    if (check !== hash) return res.status(403).json({ detail: "Incorrect password." });
+    await run("UPDATE app_config SET app_password_hash = '' WHERE id = 'default'");
+    res.json({ status: "ok", has_password: false });
+  }));
+
+  // ── Step tracking ──
+  app.get("/api/settings/current-step", asyncHandler(async (req, res) => {
+    const userId = req.query.user_id || "default";
+    const prefs = await getOne("SELECT current_step FROM user_preferences WHERE user_id = $1", [userId]);
+    res.json({ current_step: prefs?.current_step || 0 });
+  }));
+
+  app.put("/api/settings/current-step", asyncHandler(async (req, res) => {
+    const userId = req.body.user_id || "default";
+    const step = req.body.step;
+    if (typeof step !== "number" || step < 0 || step > 12) {
+      return res.status(400).json({ detail: "Step must be 0-12." });
+    }
+    const existing = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [userId]);
+    if (existing) {
+      await run("UPDATE user_preferences SET current_step = $1, updated_at = $2 WHERE user_id = $3", [step, now(), userId]);
+    } else {
+      await run("INSERT INTO user_preferences (id, user_id, current_step) VALUES ($1, $2, $3)", [uuid(), userId, step]);
+    }
+    res.json({ current_step: step });
+  }));
 
   // ══════════════════════════════════════
   // Ollama Management
@@ -1241,16 +1784,31 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
     const prefs = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [userId]);
     if (prefs?.about_me) parts.push(`ABOUT THIS PERSON (their own words): "${prefs.about_me}"`);
     if (prefs?.faith_tradition) {
-      const t = FAITH_TRADITIONS[prefs.faith_tradition] || {};
-      let s = `FAITH: ${t.label || prefs.faith_tradition}.`;
+      let s = `FAITH: ${prefs.faith_tradition}.`;
       if (prefs.faith_notes) s += ` They shared: "${prefs.faith_notes}"`;
-      if (t.figures?.length) s += ` Key figures: ${t.figures.join(", ")}.`;
-      if (t.practices?.length) s += ` Practices: ${t.practices.join(", ")}.`;
       parts.push(s);
     }
-    const heroes = await getAll("SELECT name FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [userId]);
+    const heroes = await getAll("SELECT name, quotes FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [userId]);
     if (heroes.length) {
       parts.push(`HEROES THEY DRAW INSPIRATION FROM: ${heroes.map(h => h.name).join(", ")}. Reference their wisdom when it fits naturally.`);
+    }
+    // Build hero quotes map for system prompt
+    const heroQuotesMap = {};
+    for (const h of heroes) {
+      let parsed = [];
+      try { parsed = typeof h.quotes === "string" ? JSON.parse(h.quotes) : (h.quotes || []); } catch {}
+      if (Array.isArray(parsed) && parsed.length > 0) heroQuotesMap[h.name] = parsed;
+    }
+    // Include standalone user quotes/passages
+    const userQuotes = await getAll("SELECT * FROM user_quotes WHERE user_id = $1 AND is_active = TRUE ORDER BY created_at DESC LIMIT 20", [userId]);
+    if (userQuotes.length) {
+      const qList = userQuotes.map(q => {
+        let s = `"${q.text}"`;
+        if (q.author) s += ` — ${q.author}`;
+        if (q.source) s += ` (${q.source})`;
+        return s;
+      });
+      parts.push(`QUOTES & PASSAGES THEY'VE SAVED (these resonate with them — reference naturally when relevant):\n${qList.join("\n")}`);
     }
     const memories = await getAll("SELECT * FROM ai_memories WHERE user_id = $1 AND is_active = TRUE ORDER BY updated_at DESC LIMIT 50", [userId]);
     if (memories.length) {
@@ -1272,36 +1830,106 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
       });
       parts.push(`RECENT MOOD TREND (last ${moods.length} entries): ${trend.join(" → ")}`);
     }
-    return parts.join("\n\n");
+    return { text: parts.join("\n\n"), heroQuotes: heroQuotesMap };
   }
 
   // ── Simple book HTML builder ──
   async function buildBookHtml(entries, opts) {
-    const escHtml = s => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const escHtml = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const bookTitle = escHtml(opts.title || "My Recovery Journal");
     const bookAuthor = escHtml(opts.author || "");
     const bookYear = escHtml(opts.year || new Date().getFullYear().toString());
 
+    // Filter by date range if provided
+    let filtered = entries;
+    if (opts.start_date) filtered = filtered.filter(e => e.created_at >= opts.start_date);
+    if (opts.end_date) filtered = filtered.filter(e => e.created_at <= opts.end_date + "T23:59:59");
+
+    let dedicationHtml = "";
+    if (opts.dedication) {
+      dedicationHtml = `<div style="text-align:center;padding:80px 40px;font-style:italic;"><p>${escHtml(opts.dedication)}</p></div><div style="page-break-after:always;"></div>`;
+    }
+
+    // Heroes section
+    let heroesHtml = "";
+    if (opts.include_heroes) {
+      const heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [opts.user_id || "default"]);
+      if (heroes.length) {
+        const heroCards = heroes.map(h => `<div style="margin-bottom:12px;"><strong>${escHtml(h.name)}</strong>${h.description ? ` — ${escHtml(h.description)}` : ""}</div>`).join("");
+        heroesHtml = `<div style="page-break-before:always;padding-top:40px;"><h2>My Recovery Heroes</h2>${heroCards}</div>`;
+      }
+    }
+
     let chaptersHtml = "";
-    for (let i = 0; i < entries.length; i++) {
-      const e = entries[i];
+    for (let i = 0; i < filtered.length; i++) {
+      const e = filtered[i];
       const mood = await getOne("SELECT * FROM mood_entries WHERE entry_id = $1", [e.id]);
       const moodInfo = mood ? (MOOD_WEATHER[mood.weather] || {}) : null;
       let moodBlock = "";
       if (moodInfo) {
+        const el = Math.max(0, Math.min(10, parseInt(mood.energy_level) || 5));
         moodBlock = `<div style="background:#f8f8f8;padding:12px;border-radius:8px;margin-bottom:16px;font-style:italic;">
           <strong>${escHtml(moodInfo.label)}</strong> — ${escHtml(moodInfo.description)}
           ${mood.note ? `<br/>"${escHtml(mood.note)}"` : ""}
-          <br/>Energy: ${"●".repeat(mood.energy_level)}${"○".repeat(10 - mood.energy_level)}
+          <br/>Energy: ${"●".repeat(el)}${"○".repeat(10 - el)}
         </div>`;
       }
+
+      // Conversations for this entry
+      let convoBlock = "";
+      if (opts.include_conversations) {
+        const convos = await getAll("SELECT * FROM conversations WHERE entry_id = $1 ORDER BY created_at", [e.id]);
+        for (const c of convos) {
+          let msgs = [];
+          try { msgs = typeof c.messages === "string" ? JSON.parse(c.messages) : (c.messages || []); } catch {}
+          if (msgs.length) {
+            const msgHtml = msgs.map(m => `<div style="margin-bottom:8px;"><strong style="color:${m.role === "user" ? "#333" : "#666"};">${m.role === "user" ? "You" : "AI Companion"}:</strong> ${escHtml(m.content)}</div>`).join("");
+            convoBlock += `<div style="background:#fafafa;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #eee;"><h4 style="margin:0 0 8px;">Conversation</h4>${msgHtml}</div>`;
+          }
+        }
+      }
+
       chaptersHtml += `
         <div style="page-break-before:always;padding-top:40px;">
           <h2 style="margin-bottom:4px;">${escHtml(e.title || "Untitled")}</h2>
           <div style="color:#888;margin-bottom:16px;font-size:0.9em;">${escHtml(e.created_at)}</div>
           ${moodBlock}
           <div>${e.content_html || `<p>${escHtml(e.content)}</p>`}</div>
+          ${convoBlock}
         </div>`;
+    }
+
+    // Memories / insights section
+    let memoriesHtml = "";
+    if (opts.include_memories) {
+      const memories = await getAll("SELECT * FROM ai_memories WHERE user_id = $1 AND is_active = TRUE ORDER BY category, updated_at DESC LIMIT 30", [opts.user_id || "default"]);
+      if (memories.length) {
+        const byCat = {};
+        for (const m of memories) { (byCat[m.category] = byCat[m.category] || []).push(m.content); }
+        const labels = { struggle: "Struggles", strength: "Strengths", pattern: "Patterns", relationship: "Relationships", trigger: "Triggers", insight: "Insights", milestone: "Milestones" };
+        let memItems = "";
+        for (const [cat, items] of Object.entries(byCat)) {
+          memItems += `<h4>${escHtml(labels[cat] || cat)}</h4><ul>`;
+          for (const item of items.slice(0, 5)) memItems += `<li>${escHtml(item)}</li>`;
+          memItems += `</ul>`;
+        }
+        memoriesHtml = `<div style="page-break-before:always;padding-top:40px;"><h2>AI Insights &amp; Reflections</h2><p style="font-style:italic;color:#666;">What your AI companion learned about your journey.</p>${memItems}</div>`;
+      }
+    }
+
+    // Statistics
+    let statsHtml = "";
+    if (opts.include_statistics) {
+      const totalEntries = filtered.length;
+      const moods = await getAll("SELECT weather FROM mood_entries WHERE user_id = $1", [opts.user_id || "default"]);
+      const moodCounts = {};
+      for (const m of moods) { moodCounts[m.weather] = (moodCounts[m.weather] || 0) + 1; }
+      const topMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0];
+      statsHtml = `<div style="page-break-before:always;padding-top:40px;"><h2>Journey at a Glance</h2>
+        <p><strong>Total Entries:</strong> ${totalEntries}</p>
+        <p><strong>Total Mood Records:</strong> ${moods.length}</p>
+        ${topMood ? `<p><strong>Most Common Weather:</strong> ${escHtml((MOOD_WEATHER[topMood[0]] || {}).label || topMood[0])} (${topMood[1]} times)</p>` : ""}
+      </div>`;
     }
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -1309,7 +1937,11 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
       h1{text-align:center;} h2{color:#333;} .cover{text-align:center;padding:100px 0;}</style>
       </head><body>
       <div class="cover"><h1>${bookTitle}</h1><p>A Recovery Journal</p><p>${bookAuthor}</p><p>${bookYear}</p></div>
+      ${dedicationHtml}
+      ${heroesHtml}
       ${chaptersHtml}
+      ${memoriesHtml}
+      ${statsHtml}
       </body></html>`;
   }
 
@@ -1319,23 +1951,43 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
     const bookAuthor = opts.author || "";
     const bookYear = opts.year || new Date().getFullYear().toString();
 
+    // Filter by date range if provided
+    let filtered = entries;
+    if (opts.start_date) filtered = filtered.filter(e => e.created_at >= opts.start_date);
+    if (opts.end_date) filtered = filtered.filter(e => e.created_at <= opts.end_date + "T23:59:59");
+
     let md = `# ${bookTitle}\n\n*A Recovery Journal*\n\n`;
     if (bookAuthor) md += `**${bookAuthor}**\n\n`;
     md += `${bookYear}\n\n`;
     if (opts.dedication) md += `> ${opts.dedication}\n\n`;
     md += `---\n\n`;
 
-    for (let i = 0; i < entries.length; i++) {
-      const e = entries[i];
+    // Heroes section
+    if (opts.include_heroes) {
+      const heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [opts.user_id || "default"]);
+      if (heroes.length) {
+        md += `## My Recovery Heroes\n\n`;
+        for (const h of heroes) {
+          md += `**${h.name}**`;
+          if (h.description) md += ` — ${h.description}`;
+          md += `\n\n`;
+        }
+        md += `---\n\n`;
+      }
+    }
+
+    for (let i = 0; i < filtered.length; i++) {
+      const e = filtered[i];
       md += `## ${e.title || "Untitled"}\n\n`;
       md += `*${e.created_at}*\n\n`;
 
       const mood = await getOne("SELECT * FROM mood_entries WHERE entry_id = $1", [e.id]);
       const moodInfo = mood ? (MOOD_WEATHER[mood.weather] || {}) : null;
       if (moodInfo) {
+        const el = Math.max(0, Math.min(10, parseInt(mood.energy_level) || 5));
         md += `> **${moodInfo.label}** — ${moodInfo.description}`;
         if (mood.note) md += `\n> "${mood.note}"`;
-        md += `\n> Energy: ${"●".repeat(mood.energy_level)}${"○".repeat(10 - mood.energy_level)}\n\n`;
+        md += `\n> Energy: ${"●".repeat(el)}${"○".repeat(10 - el)}\n\n`;
       }
 
       // Use plain text content; strip basic HTML tags if only HTML is available
@@ -1351,11 +2003,63 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
         md += `${text}\n\n`;
       }
 
+      // Conversations for this entry
+      if (opts.include_conversations) {
+        const convos = await getAll("SELECT * FROM conversations WHERE entry_id = $1 ORDER BY created_at", [e.id]);
+        for (const c of convos) {
+          let msgs = [];
+          try { msgs = typeof c.messages === "string" ? JSON.parse(c.messages) : (c.messages || []); } catch {}
+          if (msgs.length) {
+            md += `### Conversation\n\n`;
+            for (const m of msgs) {
+              md += `**${m.role === "user" ? "You" : "AI Companion"}:** ${m.content}\n\n`;
+            }
+          }
+        }
+      }
+
       md += `---\n\n`;
+    }
+
+    // Memories / insights section
+    if (opts.include_memories) {
+      const memories = await getAll("SELECT * FROM ai_memories WHERE user_id = $1 AND is_active = TRUE ORDER BY category, updated_at DESC LIMIT 30", [opts.user_id || "default"]);
+      if (memories.length) {
+        md += `## AI Insights & Reflections\n\n*What your AI companion learned about your journey.*\n\n`;
+        const byCat = {};
+        for (const m of memories) { (byCat[m.category] = byCat[m.category] || []).push(m.content); }
+        const labels = { struggle: "Struggles", strength: "Strengths", pattern: "Patterns", relationship: "Relationships", trigger: "Triggers", insight: "Insights", milestone: "Milestones" };
+        for (const [cat, items] of Object.entries(byCat)) {
+          md += `### ${labels[cat] || cat}\n\n`;
+          for (const item of items.slice(0, 5)) md += `- ${item}\n`;
+          md += `\n`;
+        }
+        md += `---\n\n`;
+      }
+    }
+
+    // Statistics
+    if (opts.include_statistics) {
+      const totalEntries = filtered.length;
+      const moods = await getAll("SELECT weather FROM mood_entries WHERE user_id = $1", [opts.user_id || "default"]);
+      const moodCounts = {};
+      for (const m of moods) { moodCounts[m.weather] = (moodCounts[m.weather] || 0) + 1; }
+      const topMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0];
+      md += `## Journey at a Glance\n\n`;
+      md += `- **Total Entries:** ${totalEntries}\n`;
+      md += `- **Total Mood Records:** ${moods.length}\n`;
+      if (topMood) md += `- **Most Common Weather:** ${(MOOD_WEATHER[topMood[0]] || {}).label || topMood[0]} (${topMood[1]} times)\n`;
+      md += `\n`;
     }
 
     return md;
   }
+
+  // ── JSON error handler for API routes ──
+  app.use("/api", (err, req, res, _next) => {
+    console.error("[StepScribe API Error]", err.message || err);
+    res.status(err.status || 500).json({ detail: err.message || "Internal server error" });
+  });
 
   return app;
 }

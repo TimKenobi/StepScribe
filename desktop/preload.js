@@ -5,4 +5,5 @@ contextBridge.exposeInMainWorld("stepscribe", {
   platform: process.platform,
   isDesktop: true,
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
+  printToPDF: (html) => ipcRenderer.invoke("print-to-pdf", html),
 });
