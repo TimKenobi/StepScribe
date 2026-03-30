@@ -243,11 +243,51 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
     res.json(quotes);
   }));
 
-  // Search quotes for a hero via AI
+  // Search quotes for a hero via Goodreads scraping (real verified quotes)
   app.post("/api/heroes/search-quotes", asyncHandler(async (req, res) => {
     const { name } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ detail: "Hero name is required" });
-    const prompt = `Find 5 real, famous, verified quotes by "${name.trim()}".
+    try {
+      const searchUrl = `https://www.goodreads.com/quotes/search?q=${encodeURIComponent(name.trim())}`;
+      const resp = await fetch(searchUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+      });
+      if (!resp.ok) throw new Error(`Goodreads returned ${resp.status}`);
+      const html = await resp.text();
+
+      // Parse quotes from Goodreads HTML — quotes live in <div class="quoteText">
+      const quotes = [];
+      const quoteBlocks = html.split('class="quoteText"');
+      for (let i = 1; i < quoteBlocks.length && quotes.length < 8; i++) {
+        const block = quoteBlocks[i];
+        // Extract quote text: starts with &ldquo; or " and ends with &rdquo; or "
+        const textMatch = block.match(/["\u201C]([^"\u201D]{10,500})["\u201D]/);
+        if (!textMatch) continue;
+        const text = textMatch[1]
+          .replace(/<br\s*\/?>/gi, " ")
+          .replace(/<[^>]+>/g, "")
+          .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+          .replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+          .replace(/\s+/g, " ").trim();
+        if (!text || text.length < 10) continue;
+
+        // Extract source (book title) from <a class="authorOrTitle"> with <em>
+        let source = "";
+        const sourceMatch = block.match(/authorOrTitle[^>]*>\s*<em>([^<]+)<\/em>/i);
+        if (sourceMatch) source = sourceMatch[1].trim();
+
+        quotes.push({ text, source });
+      }
+
+      if (quotes.length > 0) {
+        return res.json({ quotes });
+      }
+      // If Goodreads didn't return results, fall back to AI
+      throw new Error("No quotes found on Goodreads");
+    } catch (goodreadsErr) {
+      // Fallback: try AI search
+      try {
+        const prompt = `Find 5 real, famous, verified quotes by "${name.trim()}".
 Only include quotes that are genuinely attributed to this person.
 If this person is not a public figure or you cannot find verified quotes, return an empty array.
 Do NOT make up quotes. Do NOT attribute quotes to the wrong person.
@@ -256,19 +296,19 @@ Return ONLY a JSON array of objects with "text" and "source" fields. Example:
 [{"text": "The quote text here.", "source": "Book or Speech name"}]
 
 If no verified quotes exist, return: []`;
-    try {
-      const response = await ai.chat([{ role: "user", content: prompt }], 0.2);
-      let cleaned = response.trim();
-      if (cleaned.startsWith("```")) cleaned = cleaned.split("\n").slice(1).join("\n").replace(/```/g, "");
-      const parsed = JSON.parse(cleaned);
-      if (!Array.isArray(parsed)) return res.json({ quotes: [] });
-      const safeQuotes = parsed.slice(0, 10).filter(q => q && q.text).map(q => ({
-        text: String(q.text).slice(0, 500),
-        source: String(q.source || "").slice(0, 200),
-      }));
-      res.json({ quotes: safeQuotes });
-    } catch {
-      res.json({ quotes: [] });
+        const response = await ai.chat([{ role: "user", content: prompt }], 0.2);
+        let cleaned = response.trim();
+        if (cleaned.startsWith("```")) cleaned = cleaned.split("\n").slice(1).join("\n").replace(/```/g, "");
+        const parsed = JSON.parse(cleaned);
+        if (!Array.isArray(parsed)) return res.json({ quotes: [] });
+        const safeQuotes = parsed.slice(0, 10).filter(q => q && q.text).map(q => ({
+          text: String(q.text).slice(0, 500),
+          source: String(q.source || "").slice(0, 200),
+        }));
+        res.json({ quotes: safeQuotes });
+      } catch {
+        res.json({ quotes: [] });
+      }
     }
   }));
 

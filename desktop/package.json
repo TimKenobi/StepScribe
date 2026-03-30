@@ -38,6 +38,7 @@
     "productName": "StepScribe",
     "copyright": "Copyright © 2025 Pixel Space Technologies LLC",
     "afterSign": "scripts/notarize.js",
+    "afterPack": "scripts/afterPack.js",
     "directories": {
       "output": "dist",
       "buildResources": "assets"
@@ -77,10 +78,8 @@
         }
       ],
       "darkModeSupport": true,
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "gatekeeperAssess": false,
-      "entitlements": "entitlements.mac.plist",
-      "entitlementsInherit": "entitlements.mac.plist",
       "notarize": false
     },
     "dmg": {

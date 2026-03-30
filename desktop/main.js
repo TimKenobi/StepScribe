@@ -232,22 +232,34 @@ ipcMain.handle("open-external", async (event, url) => {
 /* ── IPC: PDF export via Electron's printToPDF ── */
 ipcMain.handle("print-to-pdf", async (event, html) => {
   const { dialog } = require("electron");
+  // Write HTML to a temp file to avoid data URL size limits
+  const tmpPath = path.join(require("os").tmpdir(), `stepscribe-export-${Date.now()}.html`);
+  fs.writeFileSync(tmpPath, html, "utf-8");
   const win = new BrowserWindow({ show: false, width: 800, height: 1100, webPreferences: { nodeIntegration: false } });
-  await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-  // Small delay for rendering
-  await new Promise(r => setTimeout(r, 500));
-  const pdfBuffer = await win.webContents.printToPDF({
-    printBackground: true, marginsType: 0,
-    pageSize: "Letter",
-  });
-  win.close();
-  const { filePath } = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: `stepscribe-journal-${new Date().getFullYear()}.pdf`,
-    filters: [{ name: "PDF", extensions: ["pdf"] }],
-  });
-  if (!filePath) return null;
-  fs.writeFileSync(filePath, pdfBuffer);
-  return filePath;
+  try {
+    await win.loadFile(tmpPath);
+    // Wait for rendering
+    await new Promise(r => setTimeout(r, 1000));
+    const pdfBuffer = await win.webContents.printToPDF({
+      printBackground: true,
+      pageSize: "Letter",
+      margins: { marginType: "default" },
+    });
+    win.close();
+    // Clean up temp file
+    try { fs.unlinkSync(tmpPath); } catch {}
+    const { filePath } = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: `stepscribe-journal-${new Date().getFullYear()}.pdf`,
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
+    if (!filePath) return null;
+    fs.writeFileSync(filePath, pdfBuffer);
+    return filePath;
+  } catch (err) {
+    win.close();
+    try { fs.unlinkSync(tmpPath); } catch {}
+    throw err;
+  }
 });
 
 /* ── App Lifecycle ── */

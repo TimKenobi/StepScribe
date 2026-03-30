@@ -60,14 +60,21 @@ export default function ExportPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error("Export failed");
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => null);
+          throw new Error(errBody?.detail || `Server returned ${res.status}`);
+        }
         const html = await res.text();
         if (window.stepscribe?.printToPDF) {
-          const pdfPath = await window.stepscribe.printToPDF(html);
-          if (pdfPath) {
-            setMessage(`Your journal book has been saved as PDF.`);
-          } else {
-            setMessage("Export cancelled.");
+          try {
+            const pdfPath = await window.stepscribe.printToPDF(html);
+            if (pdfPath) {
+              setMessage(`Your journal book has been saved as PDF.`);
+            } else {
+              setMessage("Export cancelled.");
+            }
+          } catch (pdfErr: any) {
+            throw new Error(`PDF generation failed: ${pdfErr.message || "Unknown error"}`);
           }
         } else {
           // Fallback for non-Electron: download as HTML
@@ -82,7 +89,7 @@ export default function ExportPage() {
         }
       }
     } catch (err: any) {
-      setMessage("Could not generate book. Make sure you have published entries.");
+      setMessage(err.message || "Could not generate book. Make sure you have published entries.");
     }
     setGenerating(false);
   };
