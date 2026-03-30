@@ -114,8 +114,21 @@ export const groupsApi = {
     request<any>("/api/groups/", { method: "POST", body: JSON.stringify(data) }),
   join: (data: { user_id: string; invite_code: string; role?: string }) =>
     request<any>("/api/groups/join", { method: "POST", body: JSON.stringify(data) }),
-  share: (data: { entry_id: string; group_id: string; shared_by: string }) =>
+  share: (data: { entry_id: string; group_id: string; shared_by: string; title?: string; content?: string }) =>
     request<any>("/api/groups/share", { method: "POST", body: JSON.stringify(data) }),
+  shared: (groupId: string) => request<any[]>(`/api/groups/${groupId}/shared`),
+  members: (groupId: string) => request<any[]>(`/api/groups/${groupId}/members`),
+  syncPull: (userId = "default") =>
+    request<any>("/api/groups/sync/pull", { method: "POST", body: JSON.stringify({ user_id: userId }) }),
+};
+
+// Supabase config
+export const supabaseApi = {
+  get: () => request<any>("/api/settings/supabase"),
+  save: (data: { supabase_url?: string; supabase_anon_key?: string; supabase_display_name?: string }) =>
+    request<any>("/api/settings/supabase", { method: "POST", body: JSON.stringify(data) }),
+  test: (data: { supabase_url: string; supabase_anon_key: string }) =>
+    request<any>("/api/settings/supabase/test", { method: "POST", body: JSON.stringify(data) }),
 };
 
 // Sync

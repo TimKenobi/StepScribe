@@ -215,6 +215,9 @@ async function createTables() {
     ["user_heroes", "quotes", "TEXT DEFAULT '[]'"],
     ["app_config", "app_password_hash", "TEXT DEFAULT ''"],
     ["user_preferences", "current_step", "INTEGER DEFAULT 0"],
+    ["app_config", "supabase_url", "TEXT DEFAULT ''"],
+    ["app_config", "supabase_anon_key", "TEXT DEFAULT ''"],
+    ["app_config", "supabase_display_name", "TEXT DEFAULT ''"],
   ];
   for (const [table, column, colType] of migrations) {
     try {

@@ -802,23 +802,47 @@ Rules:
     await run("INSERT INTO group_members (id, group_id, user_id, role) VALUES ($1, $2, $3, 'sponsor')",
       [uuid(), id, created_by]);
     const group = await getOne("SELECT * FROM group_journals WHERE id = $1", [id]);
+    // Sync to Supabase if configured
+    await supabaseSync("groups", "POST", { id, name, description, created_by, invite_code: inviteCode, created_at: now() });
+    await supabaseSync("group_members", "POST", { id: uuid(), group_id: id, user_id: created_by, display_name: await getSupabaseDisplayName(), role: "sponsor", joined_at: now() });
     res.json(group);
   }));
 
   app.post("/api/groups/join", asyncHandler(async (req, res) => {
     const { user_id, invite_code, role = "member" } = req.body;
-    const group = await getOne("SELECT * FROM group_journals WHERE invite_code = $1", [invite_code]);
+    // Try Supabase first if configured, then local
+    let group = await getOne("SELECT * FROM group_journals WHERE invite_code = $1", [invite_code]);
+    if (!group) {
+      // Try pulling from Supabase
+      const remoteGroup = await supabaseFetch("groups", `?invite_code=eq.${encodeURIComponent(invite_code)}&limit=1`);
+      if (remoteGroup && remoteGroup.length > 0) {
+        const rg = remoteGroup[0];
+        await run("INSERT INTO group_journals (id, name, description, created_by, invite_code, created_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING",
+          [rg.id, rg.name, rg.description || "", rg.created_by, rg.invite_code, rg.created_at || now()]);
+        group = await getOne("SELECT * FROM group_journals WHERE id = $1", [rg.id]);
+      }
+    }
     if (!group) return res.status(404).json({ detail: "Invalid invite code" });
     const existing = await getOne("SELECT * FROM group_members WHERE group_id = $1 AND user_id = $2", [group.id, user_id]);
     if (existing) return res.status(400).json({ detail: "Already a member" });
-    await run("INSERT INTO group_members (id, group_id, user_id, role) VALUES ($1, $2, $3, $4)", [uuid(), group.id, user_id, role]);
+    const memberId = uuid();
+    await run("INSERT INTO group_members (id, group_id, user_id, role) VALUES ($1, $2, $3, $4)", [memberId, group.id, user_id, role]);
+    await supabaseSync("group_members", "POST", { id: memberId, group_id: group.id, user_id, display_name: await getSupabaseDisplayName(), role, joined_at: now() });
     res.json({ joined: true, group_name: group.name });
   }));
 
   app.post("/api/groups/share", asyncHandler(async (req, res) => {
-    const { entry_id, group_id, shared_by } = req.body;
+    const { entry_id, group_id, shared_by, title = "", content = "" } = req.body;
+    const shareId = uuid();
     await run("INSERT INTO shared_entries (id, entry_id, group_id, shared_by, shared_at) VALUES ($1, $2, $3, $4, $5)",
-      [uuid(), entry_id, group_id, shared_by, now()]);
+      [shareId, entry_id, group_id, shared_by, now()]);
+    // Sync shared entry content to Supabase (just title + content, not the full entry)
+    const entry = await getOne("SELECT title, content FROM journal_entries WHERE id = $1", [entry_id]);
+    await supabaseSync("shared_entries", "POST", {
+      id: shareId, group_id, shared_by, display_name: await getSupabaseDisplayName(),
+      title: title || entry?.title || "Untitled", content: content || entry?.content || "",
+      shared_at: now(),
+    });
     res.json({ shared: true });
   }));
 
@@ -826,6 +850,153 @@ Rules:
     const groups = await getAll("SELECT g.* FROM group_journals g JOIN group_members m ON m.group_id = g.id WHERE m.user_id = $1",
       [req.params.userId]);
     res.json(groups);
+  }));
+
+  // Pull shared entries from Supabase for a group
+  app.get("/api/groups/:groupId/shared", asyncHandler(async (req, res) => {
+    const remote = await supabaseFetch("shared_entries", `?group_id=eq.${req.params.groupId}&order=shared_at.desc&limit=50`);
+    if (remote && remote.length > 0) return res.json(remote);
+    // Fallback to local
+    const local = await getAll(
+      `SELECT se.*, je.title, je.content FROM shared_entries se LEFT JOIN journal_entries je ON je.id = se.entry_id WHERE se.group_id = $1 ORDER BY se.shared_at DESC`,
+      [req.params.groupId]
+    );
+    res.json(local);
+  }));
+
+  // Pull group members from Supabase
+  app.get("/api/groups/:groupId/members", asyncHandler(async (req, res) => {
+    const remote = await supabaseFetch("group_members", `?group_id=eq.${req.params.groupId}&order=joined_at`);
+    if (remote && remote.length > 0) return res.json(remote);
+    const local = await getAll("SELECT * FROM group_members WHERE group_id = $1 ORDER BY joined_at", [req.params.groupId]);
+    res.json(local);
+  }));
+
+  // Sync all groups from Supabase (pull)
+  app.post("/api/groups/sync/pull", asyncHandler(async (req, res) => {
+    const { user_id = "default" } = req.body;
+    const config = await getOne("SELECT supabase_url, supabase_anon_key FROM app_config WHERE id = 'default'", []);
+    if (!config?.supabase_url || !config?.supabase_anon_key) return res.json({ synced: false, reason: "Supabase not configured" });
+
+    // Pull groups where I'm a member
+    const myMemberships = await supabaseFetch("group_members", `?user_id=eq.${encodeURIComponent(user_id)}`);
+    if (!myMemberships || !myMemberships.length) return res.json({ synced: true, groups: 0 });
+
+    let count = 0;
+    for (const m of myMemberships) {
+      const remoteGroups = await supabaseFetch("groups", `?id=eq.${m.group_id}`);
+      if (remoteGroups && remoteGroups.length > 0) {
+        const rg = remoteGroups[0];
+        await run("INSERT INTO group_journals (id, name, description, created_by, invite_code, created_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET name = $2, description = $3",
+          [rg.id, rg.name, rg.description || "", rg.created_by, rg.invite_code, rg.created_at || now()]);
+        const existingMember = await getOne("SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2", [rg.id, user_id]);
+        if (!existingMember) {
+          await run("INSERT INTO group_members (id, group_id, user_id, role) VALUES ($1, $2, $3, $4)", [uuid(), rg.id, user_id, m.role || "member"]);
+        }
+        count++;
+      }
+    }
+    res.json({ synced: true, groups: count });
+  }));
+
+  // ══════════════════════════════════════
+  // Supabase Cloud Sync Helper
+  // ══════════════════════════════════════
+  async function getSupabaseConfig() {
+    const config = await getOne("SELECT supabase_url, supabase_anon_key, supabase_display_name FROM app_config WHERE id = 'default'", []);
+    if (!config?.supabase_url || !config?.supabase_anon_key) return null;
+    return { url: config.supabase_url.replace(/\/$/, ""), key: config.supabase_anon_key, displayName: config.supabase_display_name || "Anonymous" };
+  }
+
+  async function getSupabaseDisplayName() {
+    const config = await getSupabaseConfig();
+    return config?.displayName || "Anonymous";
+  }
+
+  async function supabaseSync(table, method, data) {
+    try {
+      const config = await getSupabaseConfig();
+      if (!config) return null;
+      const res = await fetch(`${config.url}/rest/v1/${table}`, {
+        method,
+        headers: {
+          "apikey": config.key,
+          "Authorization": `Bearer ${config.key}`,
+          "Content-Type": "application/json",
+          "Prefer": "return=minimal",
+        },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        console.log(`[Supabase] ${method} ${table} failed: ${res.status} ${text}`);
+      }
+      return res.ok;
+    } catch (e) {
+      console.log(`[Supabase] sync error: ${e.message}`);
+      return null;
+    }
+  }
+
+  async function supabaseFetch(table, query = "") {
+    try {
+      const config = await getSupabaseConfig();
+      if (!config) return null;
+      const res = await fetch(`${config.url}/rest/v1/${table}${query}`, {
+        headers: {
+          "apikey": config.key,
+          "Authorization": `Bearer ${config.key}`,
+        },
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  // Supabase settings endpoints
+  app.get("/api/settings/supabase", asyncHandler(async (req, res) => {
+    const config = await getOne("SELECT supabase_url, supabase_anon_key, supabase_display_name FROM app_config WHERE id = 'default'", []);
+    res.json({
+      supabase_url: config?.supabase_url || "",
+      supabase_anon_key: config?.supabase_anon_key ? "••••••••" + (config.supabase_anon_key.slice(-8) || "") : "",
+      supabase_display_name: config?.supabase_display_name || "",
+      configured: !!(config?.supabase_url && config?.supabase_anon_key),
+    });
+  }));
+
+  app.post("/api/settings/supabase", asyncHandler(async (req, res) => {
+    const { supabase_url, supabase_anon_key, supabase_display_name } = req.body;
+    const updates = [];
+    const values = [];
+    let idx = 1;
+    if (supabase_url !== undefined) { updates.push(`supabase_url = $${idx++}`); values.push(supabase_url); }
+    if (supabase_anon_key !== undefined && !supabase_anon_key.includes("••")) { updates.push(`supabase_anon_key = $${idx++}`); values.push(supabase_anon_key); }
+    if (supabase_display_name !== undefined) { updates.push(`supabase_display_name = $${idx++}`); values.push(supabase_display_name); }
+    if (updates.length) {
+      await run(`UPDATE app_config SET ${updates.join(", ")} WHERE id = 'default'`, values);
+    }
+    res.json({ saved: true });
+  }));
+
+  app.post("/api/settings/supabase/test", asyncHandler(async (req, res) => {
+    const { supabase_url, supabase_anon_key } = req.body;
+    const url = (supabase_url || "").replace(/\/$/, "");
+    if (!url || !supabase_anon_key) return res.json({ ok: false, error: "URL and key are required" });
+    try {
+      const r = await fetch(`${url}/rest/v1/groups?limit=1`, {
+        headers: { "apikey": supabase_anon_key, "Authorization": `Bearer ${supabase_anon_key}` },
+      });
+      if (r.ok) return res.json({ ok: true });
+      const text = await r.text();
+      if (r.status === 404 || text.includes("does not exist")) {
+        return res.json({ ok: false, error: "Connected, but tables not found. Run the SQL setup in Supabase first." });
+      }
+      return res.json({ ok: false, error: `HTTP ${r.status}: ${text.slice(0, 200)}` });
+    } catch (e) {
+      return res.json({ ok: false, error: e.message });
+    }
   }));
 
   // ══════════════════════════════════════
