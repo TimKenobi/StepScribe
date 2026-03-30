@@ -256,25 +256,29 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
       const html = await resp.text();
 
       // Parse quotes from Goodreads HTML — quotes live in <div class="quoteText">
+      // Goodreads uses &ldquo; / &rdquo; HTML entities for curly quotes
       const quotes = [];
       const quoteBlocks = html.split('class="quoteText"');
       for (let i = 1; i < quoteBlocks.length && quotes.length < 8; i++) {
         const block = quoteBlocks[i];
-        // Extract quote text: starts with &ldquo; or " and ends with &rdquo; or "
-        const textMatch = block.match(/["\u201C]([^"\u201D]{10,500})["\u201D]/);
+        // Match text between &ldquo; ... &rdquo; HTML entities
+        const textMatch = block.match(/&ldquo;([\s\S]*?)&rdquo;/);
         if (!textMatch) continue;
         const text = textMatch[1]
           .replace(/<br\s*\/?>/gi, " ")
           .replace(/<[^>]+>/g, "")
+          .replace(/&ldquo;/g, "\u201C").replace(/&rdquo;/g, "\u201D")
+          .replace(/&lsquo;/g, "\u2018").replace(/&rsquo;/g, "\u2019")
           .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
           .replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+          .replace(/&mdash;/g, "\u2014").replace(/&ndash;/g, "\u2013")
           .replace(/\s+/g, " ").trim();
         if (!text || text.length < 10) continue;
 
-        // Extract source (book title) from <a class="authorOrTitle"> with <em>
+        // Extract source (book title) from <em> inside authorOrTitle link
         let source = "";
-        const sourceMatch = block.match(/authorOrTitle[^>]*>\s*<em>([^<]+)<\/em>/i);
-        if (sourceMatch) source = sourceMatch[1].trim();
+        const sourceMatch = block.match(/<em[^>]*>([^<]+)<\/em>/i);
+        if (sourceMatch) source = sourceMatch[1].replace(/&amp;/g, "&").trim();
 
         quotes.push({ text, source });
       }
@@ -1753,10 +1757,11 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
       const moodInfo = mood ? (MOOD_WEATHER[mood.weather] || {}) : null;
       let moodBlock = "";
       if (moodInfo) {
+        const el = Math.max(0, Math.min(10, parseInt(mood.energy_level) || 5));
         moodBlock = `<div style="background:#f8f8f8;padding:12px;border-radius:8px;margin-bottom:16px;font-style:italic;">
           <strong>${escHtml(moodInfo.label)}</strong> — ${escHtml(moodInfo.description)}
           ${mood.note ? `<br/>"${escHtml(mood.note)}"` : ""}
-          <br/>Energy: ${"●".repeat(mood.energy_level)}${"○".repeat(10 - mood.energy_level)}
+          <br/>Energy: ${"●".repeat(el)}${"○".repeat(10 - el)}
         </div>`;
       }
 
@@ -1869,9 +1874,10 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
       const mood = await getOne("SELECT * FROM mood_entries WHERE entry_id = $1", [e.id]);
       const moodInfo = mood ? (MOOD_WEATHER[mood.weather] || {}) : null;
       if (moodInfo) {
+        const el = Math.max(0, Math.min(10, parseInt(mood.energy_level) || 5));
         md += `> **${moodInfo.label}** — ${moodInfo.description}`;
         if (mood.note) md += `\n> "${mood.note}"`;
-        md += `\n> Energy: ${"●".repeat(mood.energy_level)}${"○".repeat(10 - mood.energy_level)}\n\n`;
+        md += `\n> Energy: ${"●".repeat(el)}${"○".repeat(10 - el)}\n\n`;
       }
 
       // Use plain text content; strip basic HTML tags if only HTML is available
@@ -1938,6 +1944,12 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
 
     return md;
   }
+
+  // ── JSON error handler for API routes ──
+  app.use("/api", (err, req, res, _next) => {
+    console.error("[StepScribe API Error]", err.message || err);
+    res.status(err.status || 500).json({ detail: err.message || "Internal server error" });
+  });
 
   return app;
 }

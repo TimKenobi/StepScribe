@@ -20,7 +20,8 @@ exports.default = async function afterPack(context) {
 
   console.log(`🔏 Ad-hoc signing ${appPath} for Apple Silicon compatibility...`);
   try {
-    execSync(`codesign --force --deep --sign - "${appPath}"`, { stdio: "inherit" });
+    // Use --options runtime for hardened runtime compatibility
+    execSync(`codesign --force --deep --sign - --options runtime "${appPath}"`, { stdio: "inherit" });
     console.log("✅ Ad-hoc signing complete");
   } catch (err) {
     console.warn("⚠ Ad-hoc signing failed (app may show 'damaged' on ARM Macs):", err.message);
