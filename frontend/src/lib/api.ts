@@ -269,4 +269,9 @@ export const settingsApi = {
       method: "PUT",
       body: JSON.stringify({ step }),
     }),
+  checkForUpdates: async () => {
+    const res = await fetch("https://api.github.com/repos/TimKenobi/StepScribe/releases/latest");
+    if (!res.ok) throw new Error("Could not check for updates");
+    return res.json();
+  },
 };

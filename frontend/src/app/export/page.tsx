@@ -5,6 +5,12 @@ import { BookOpen, FileJson, Upload, Calendar, Settings2, FileText } from "lucid
 import { exportApi, syncApi } from "@/lib/api";
 import { downloadJson, importJsonFile } from "@/lib/storage";
 
+declare global {
+  interface Window {
+    stepscribe?: { platform?: string; isDesktop?: boolean; openExternal?: (url: string) => Promise<void>; printToPDF?: (html: string) => Promise<string> };
+  }
+}
+
 export default function ExportPage() {
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
@@ -48,14 +54,32 @@ export default function ExportPage() {
         URL.revokeObjectURL(url);
         setMessage("Your journal has been exported as Markdown.");
       } else {
-        const blob = await exportApi.journalBook(payload);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `recovery-journal-${year}.pdf`;
-        a.click();
-        URL.revokeObjectURL(url);
-        setMessage("Your journal book has been downloaded.");
+        // PDF: Server returns HTML, then Electron converts to PDF via printToPDF IPC
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/export/journal-book`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error("Export failed");
+        const html = await res.text();
+        if (window.stepscribe?.printToPDF) {
+          const pdfPath = await window.stepscribe.printToPDF(html);
+          if (pdfPath) {
+            setMessage(`Your journal book has been saved as PDF.`);
+          } else {
+            setMessage("Export cancelled.");
+          }
+        } else {
+          // Fallback for non-Electron: download as HTML
+          const blob = new Blob([html], { type: "text/html" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `recovery-journal-${year}.html`;
+          a.click();
+          URL.revokeObjectURL(url);
+          setMessage("Your journal book has been downloaded as HTML. Open it in a browser and print to PDF.");
+        }
       }
     } catch (err: any) {
       setMessage("Could not generate book. Make sure you have published entries.");

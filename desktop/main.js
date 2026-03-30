@@ -231,16 +231,23 @@ ipcMain.handle("open-external", async (event, url) => {
 
 /* ── IPC: PDF export via Electron's printToPDF ── */
 ipcMain.handle("print-to-pdf", async (event, html) => {
+  const { dialog } = require("electron");
   const win = new BrowserWindow({ show: false, width: 800, height: 1100, webPreferences: { nodeIntegration: false } });
   await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  // Small delay for rendering
+  await new Promise(r => setTimeout(r, 500));
   const pdfBuffer = await win.webContents.printToPDF({
     printBackground: true, marginsType: 0,
     pageSize: "Letter",
   });
   win.close();
-  const outPath = path.join(EXPORT_DIR, `stepscribe-journal-${Date.now()}.pdf`);
-  fs.writeFileSync(outPath, pdfBuffer);
-  return outPath;
+  const { filePath } = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: `stepscribe-journal-${new Date().getFullYear()}.pdf`,
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+  });
+  if (!filePath) return null;
+  fs.writeFileSync(filePath, pdfBuffer);
+  return filePath;
 });
 
 /* ── App Lifecycle ── */

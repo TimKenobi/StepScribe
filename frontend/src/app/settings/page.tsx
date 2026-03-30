@@ -10,7 +10,7 @@ import {
 
 declare global {
   interface Window {
-    stepscribe?: { platform?: string; isDesktop?: boolean; openExternal?: (url: string) => Promise<void> };
+    stepscribe?: { platform?: string; isDesktop?: boolean; openExternal?: (url: string) => Promise<void>; printToPDF?: (html: string) => Promise<string> };
   }
 }
 
@@ -72,6 +72,11 @@ export default function SettingsPage() {
   const [companionCreated, setCompanionCreated] = useState(false);
   const [installInfo, setInstallInfo] = useState<any>(null);
 
+  // Update checker state
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "up-to-date" | "update-available" | "error">("idle");
+  const [latestRelease, setLatestRelease] = useState<any>(null);
+  const APP_VERSION = "1.1.0";
+
   useEffect(() => {
     loadConfig();
     loadPasswordStatus();
@@ -82,6 +87,22 @@ export default function SettingsPage() {
       const resp = await settingsApi.hasPassword();
       setHasPassword(resp.has_password);
     } catch {}
+  };
+
+  const checkForUpdates = async () => {
+    setUpdateStatus("checking");
+    try {
+      const release = await settingsApi.checkForUpdates();
+      setLatestRelease(release);
+      const latest = (release.tag_name || "").replace(/^v/, "");
+      if (latest && latest !== APP_VERSION && latest > APP_VERSION) {
+        setUpdateStatus("update-available");
+      } else {
+        setUpdateStatus("up-to-date");
+      }
+    } catch {
+      setUpdateStatus("error");
+    }
   };
 
   const loadConfig = async () => {
@@ -797,6 +818,61 @@ export default function SettingsPage() {
                 <button onClick={() => { setShowPasswordForm(false); setNewPassword(""); setConfirmPassword(""); setCurrentPassword(""); setPasswordError(""); }}
                   className="px-3 py-2 rounded-lg text-sm" style={{ color: "var(--text-muted)" }}>Cancel</button>
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Updates */}
+        <div className="p-4 rounded-lg border" style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}>
+          <h3 className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+            <Download size={16} /> Updates
+          </h3>
+          <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+            Current version: <strong>v{APP_VERSION}</strong>
+          </p>
+          <button
+            onClick={checkForUpdates}
+            disabled={updateStatus === "checking"}
+            className="w-full py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 border"
+            style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+          >
+            {updateStatus === "checking" ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            {updateStatus === "checking" ? "Checking..." : "Check for Updates"}
+          </button>
+          {updateStatus === "up-to-date" && (
+            <div className="flex items-center gap-2 mt-3 text-xs" style={{ color: "var(--success, #22c55e)" }}>
+              <CheckCircle size={14} /> You&apos;re on the latest version.
+            </div>
+          )}
+          {updateStatus === "update-available" && latestRelease && (
+            <div className="mt-3 p-3 rounded-lg border" style={{ borderColor: "var(--accent)", backgroundColor: "var(--bg-tertiary)" }}>
+              <p className="text-sm font-medium" style={{ color: "var(--accent)" }}>
+                New version available: {latestRelease.tag_name}
+              </p>
+              {latestRelease.body && (
+                <p className="text-xs mt-1 line-clamp-3" style={{ color: "var(--text-muted)" }}>
+                  {latestRelease.body.slice(0, 200)}
+                </p>
+              )}
+              <button
+                onClick={() => {
+                  const url = latestRelease.html_url || "https://github.com/TimKenobi/StepScribe/releases/latest";
+                  if (window.stepscribe?.openExternal) {
+                    window.stepscribe.openExternal(url);
+                  } else {
+                    window.open(url, "_blank");
+                  }
+                }}
+                className="mt-2 px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+                style={{ backgroundColor: "var(--accent)", color: "#fff" }}
+              >
+                <ExternalLink size={14} /> View Release
+              </button>
+            </div>
+          )}
+          {updateStatus === "error" && (
+            <div className="flex items-center gap-2 mt-3 text-xs" style={{ color: "#f87171" }}>
+              <XCircle size={14} /> Could not check for updates. Check your internet connection.
             </div>
           )}
         </div>

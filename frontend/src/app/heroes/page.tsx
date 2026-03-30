@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, X, ToggleLeft, ToggleRight, Search, Loader2, Check } from "lucide-react";
+import { Plus, X, ToggleLeft, ToggleRight, Search, Loader2, Check, PenLine } from "lucide-react";
 import HeroQuotes from "@/components/HeroQuotes";
 import { heroesApi } from "@/lib/api";
 import { Hero } from "@/lib/types";
@@ -14,6 +14,9 @@ export default function HeroesPage() {
   const [searchingQuotes, setSearchingQuotes] = useState<string | null>(null);
   const [foundQuotes, setFoundQuotes] = useState<Record<string, any[]>>({});
   const [savingQuotes, setSavingQuotes] = useState<string | null>(null);
+  const [addingQuoteFor, setAddingQuoteFor] = useState<string | null>(null);
+  const [customQuoteText, setCustomQuoteText] = useState("");
+  const [customQuoteSource, setCustomQuoteSource] = useState("");
 
   useEffect(() => {
     loadHeroes();
@@ -75,6 +78,18 @@ export default function HeroesPage() {
     }
   };
 
+  const addCustomQuote = async (hero: Hero) => {
+    if (!customQuoteText.trim()) return;
+    const newQuote = { text: customQuoteText.trim(), source: customQuoteSource.trim() || "" };
+    const merged = [...(hero.quotes || []), newQuote];
+    setSavingQuotes(hero.id);
+    try {
+      await heroesApi.updateQuotes(hero.id, merged);
+      loadHeroes();
+      setCustomQuoteText(""); setCustomQuoteSource(""); setAddingQuoteFor(null);
+    } catch {} finally { setSavingQuotes(null); }
+  };
+
   const activeHeroes = heroes.filter((h) => h.is_active);
 
   return (
@@ -114,9 +129,17 @@ export default function HeroesPage() {
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => { setAddingQuoteFor(addingQuoteFor === hero.id ? null : hero.id); setCustomQuoteText(""); setCustomQuoteSource(""); }}
+                  title="Add custom quote"
+                  className="p-1.5 rounded-lg hover:bg-black/5"
+                  style={{ color: "var(--accent)" }}
+                >
+                  <PenLine size={14} />
+                </button>
+                <button
                   onClick={() => searchQuotes(hero)}
                   disabled={searchingQuotes === hero.id}
-                  title="Find quotes"
+                  title="Find quotes with AI"
                   className="p-1.5 rounded-lg hover:bg-black/5"
                   style={{ color: "var(--accent)" }}
                 >
@@ -143,6 +166,41 @@ export default function HeroesPage() {
                     &ldquo;{q.text}&rdquo; {q.source && <span style={{ color: "var(--text-muted)" }}>— {q.source}</span>}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Custom quote input */}
+            {addingQuoteFor === hero.id && (
+              <div className="mt-3 p-3 rounded-lg space-y-2" style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border)" }}>
+                <p className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>Add a quote or reminder</p>
+                <textarea
+                  value={customQuoteText}
+                  onChange={(e) => setCustomQuoteText(e.target.value)}
+                  placeholder="The quote, saying, or reminder..."
+                  rows={2}
+                  className="w-full px-2.5 py-1.5 rounded-lg text-xs outline-none resize-none"
+                  style={{ backgroundColor: "var(--bg-secondary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                />
+                <input
+                  value={customQuoteSource}
+                  onChange={(e) => setCustomQuoteSource(e.target.value)}
+                  placeholder="Source (optional — book, speech, etc.)"
+                  className="w-full px-2.5 py-1.5 rounded-lg text-xs outline-none"
+                  style={{ backgroundColor: "var(--bg-secondary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => addCustomQuote(hero)}
+                    disabled={!customQuoteText.trim() || savingQuotes === hero.id}
+                    className="px-3 py-1.5 rounded-lg text-xs flex items-center gap-1"
+                    style={{ backgroundColor: "var(--accent)", color: "#fff", opacity: !customQuoteText.trim() ? 0.5 : 1 }}
+                  >
+                    {savingQuotes === hero.id ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
+                    Save
+                  </button>
+                  <button onClick={() => { setAddingQuoteFor(null); setCustomQuoteText(""); setCustomQuoteSource(""); }}
+                    className="px-3 py-1.5 rounded-lg text-xs" style={{ color: "var(--text-muted)" }}>Cancel</button>
+                </div>
               </div>
             )}
 

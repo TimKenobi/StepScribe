@@ -109,10 +109,21 @@ function getSystemPrompt() {
   return SYSTEM_PROMPT;
 }
 
-function getSystemPromptWithHeroes(heroNames = [], faithTradition = "", faithNotes = "") {
+function getSystemPromptWithHeroes(heroNames = [], faithTradition = "", faithNotes = "", heroQuotes = {}) {
   let extra = "";
   if (heroNames.length) {
-    extra += `\n\nThe person you're talking to draws inspiration from: ${heroNames.join(", ")}. When it fits naturally, reference the wisdom, stories, or character of these figures. Don't force it — only bring them up when it genuinely serves the moment.`;
+    const withQuotes = heroNames.filter(n => heroQuotes[n] && heroQuotes[n].length > 0);
+    const withoutQuotes = heroNames.filter(n => !heroQuotes[n] || heroQuotes[n].length === 0);
+    if (withQuotes.length) {
+      const quoteParts = withQuotes.map(name => {
+        const qs = heroQuotes[name].slice(0, 3).map(q => `"${q.text}"${q.source ? ` (${q.source})` : ""}`).join("; ");
+        return `${name}: ${qs}`;
+      }).join("\n");
+      extra += `\n\nThe person draws inspiration from these figures. Use ONLY these verified quotes when referencing them:\n${quoteParts}`;
+    }
+    if (withoutQuotes.length) {
+      extra += `\n\nThey also admire: ${withoutQuotes.join(", ")}. These may be personal heroes (family, mentors) — reference their CHARACTER and what they mean to this person, but NEVER fabricate or invent quotes for them. You don't know what they said.`;
+    }
   }
   if (faithNotes?.trim()) {
     extra += `\n\nThis person has shared about their faith, spiritual tradition, or philosophy: "${faithNotes.trim()}". Respect this deeply. When appropriate, you may draw on the language, wisdom, and practices they describe — but never preach, never lecture, and never assume you know their relationship with their faith better than they do.`;

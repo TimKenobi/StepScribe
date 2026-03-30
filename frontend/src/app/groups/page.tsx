@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Users, Copy, LogIn } from "lucide-react";
+import { Plus, Users, Copy, LogIn, AlertTriangle } from "lucide-react";
 import { groupsApi } from "@/lib/api";
 import { Group } from "@/lib/types";
 
@@ -58,9 +58,23 @@ export default function GroupsPage() {
       <h1 className="text-2xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
         Group Journaling
       </h1>
-      <p className="text-sm mb-8" style={{ color: "var(--text-secondary)" }}>
+      <p className="text-sm mb-4" style={{ color: "var(--text-secondary)" }}>
         Recovery works better with others. Share your journey with sponsors and trusted companions.
       </p>
+
+      {/* Local-only notice */}
+      <div className="p-4 rounded-lg border mb-8 flex gap-3" style={{ borderColor: "#f59e0b40", backgroundColor: "#f59e0b08" }}>
+        <AlertTriangle size={18} style={{ color: "#f59e0b", flexShrink: 0, marginTop: 2 }} />
+        <div>
+          <p className="text-sm font-medium" style={{ color: "#f59e0b" }}>Desktop-Only Limitation</p>
+          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+            Group journaling requires a shared server to sync between devices. In this desktop version,
+            groups are stored locally and invite codes only work on the same machine.
+            A future update will add cloud sync options. For now, you can use groups to organize your own journal
+            entries by category (e.g., &quot;Step Work&quot;, &quot;Gratitude&quot;, &quot;Sponsor Notes&quot;).
+          </p>
+        </div>
+      </div>
 
       {/* Action buttons */}
       <div className="flex gap-3 mb-8">

@@ -591,8 +591,10 @@ Rules:
         convo = await getOne("SELECT * FROM conversations WHERE id = $1", [newId]);
       }
       const memCtx = await getMemoryContext(user_id);
-      let system = getSystemPrompt();
-      if (memCtx) system += "\n\n" + memCtx;
+      const prefs = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [user_id]);
+      const heroNames = (await getAll("SELECT name FROM user_heroes WHERE user_id = $1 AND is_active = TRUE", [user_id])).map(h => h.name);
+      let system = getSystemPromptWithHeroes(heroNames, prefs?.faith_tradition || "", prefs?.faith_notes || "", memCtx.heroQuotes || {});
+      if (memCtx.text) system += "\n\n" + memCtx.text;
       if (current_step) system += getStepContext(current_step);
       const eid = entry_id || convo.entry_id;
       if (eid) {
@@ -645,8 +647,10 @@ Rules:
       res.setHeader("Connection", "keep-alive");
       res.setHeader("X-Conversation-Id", convo.id);
       const memCtx = await getMemoryContext(user_id);
-      let system = getSystemPrompt();
-      if (memCtx) system += "\n\n" + memCtx;
+      const prefs = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [user_id]);
+      const heroNames = (await getAll("SELECT name FROM user_heroes WHERE user_id = $1 AND is_active = TRUE", [user_id])).map(h => h.name);
+      let system = getSystemPromptWithHeroes(heroNames, prefs?.faith_tradition || "", prefs?.faith_notes || "", memCtx.heroQuotes || {});
+      if (memCtx.text) system += "\n\n" + memCtx.text;
       if (current_step) system += getStepContext(current_step);
       const eid = entry_id || convo.entry_id;
       if (eid) {
@@ -1421,9 +1425,16 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
       if (prefs.faith_notes) s += ` They shared: "${prefs.faith_notes}"`;
       parts.push(s);
     }
-    const heroes = await getAll("SELECT name FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [userId]);
+    const heroes = await getAll("SELECT name, quotes FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [userId]);
     if (heroes.length) {
       parts.push(`HEROES THEY DRAW INSPIRATION FROM: ${heroes.map(h => h.name).join(", ")}. Reference their wisdom when it fits naturally.`);
+    }
+    // Build hero quotes map for system prompt
+    const heroQuotesMap = {};
+    for (const h of heroes) {
+      let parsed = [];
+      try { parsed = typeof h.quotes === "string" ? JSON.parse(h.quotes) : (h.quotes || []); } catch {}
+      if (Array.isArray(parsed) && parsed.length > 0) heroQuotesMap[h.name] = parsed;
     }
     const memories = await getAll("SELECT * FROM ai_memories WHERE user_id = $1 AND is_active = TRUE ORDER BY updated_at DESC LIMIT 50", [userId]);
     if (memories.length) {
@@ -1445,7 +1456,7 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
       });
       parts.push(`RECENT MOOD TREND (last ${moods.length} entries): ${trend.join(" → ")}`);
     }
-    return parts.join("\n\n");
+    return { text: parts.join("\n\n"), heroQuotes: heroQuotesMap };
   }
 
   // ── Simple book HTML builder ──
@@ -1455,9 +1466,29 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
     const bookAuthor = escHtml(opts.author || "");
     const bookYear = escHtml(opts.year || new Date().getFullYear().toString());
 
+    // Filter by date range if provided
+    let filtered = entries;
+    if (opts.start_date) filtered = filtered.filter(e => e.created_at >= opts.start_date);
+    if (opts.end_date) filtered = filtered.filter(e => e.created_at <= opts.end_date + "T23:59:59");
+
+    let dedicationHtml = "";
+    if (opts.dedication) {
+      dedicationHtml = `<div style="text-align:center;padding:80px 40px;font-style:italic;"><p>${escHtml(opts.dedication)}</p></div><div style="page-break-after:always;"></div>`;
+    }
+
+    // Heroes section
+    let heroesHtml = "";
+    if (opts.include_heroes) {
+      const heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [opts.user_id || "default"]);
+      if (heroes.length) {
+        const heroCards = heroes.map(h => `<div style="margin-bottom:12px;"><strong>${escHtml(h.name)}</strong>${h.description ? ` — ${escHtml(h.description)}` : ""}</div>`).join("");
+        heroesHtml = `<div style="page-break-before:always;padding-top:40px;"><h2>My Recovery Heroes</h2>${heroCards}</div>`;
+      }
+    }
+
     let chaptersHtml = "";
-    for (let i = 0; i < entries.length; i++) {
-      const e = entries[i];
+    for (let i = 0; i < filtered.length; i++) {
+      const e = filtered[i];
       const mood = await getOne("SELECT * FROM mood_entries WHERE entry_id = $1", [e.id]);
       const moodInfo = mood ? (MOOD_WEATHER[mood.weather] || {}) : null;
       let moodBlock = "";
@@ -1468,13 +1499,62 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
           <br/>Energy: ${"●".repeat(mood.energy_level)}${"○".repeat(10 - mood.energy_level)}
         </div>`;
       }
+
+      // Conversations for this entry
+      let convoBlock = "";
+      if (opts.include_conversations) {
+        const convos = await getAll("SELECT * FROM conversations WHERE entry_id = $1 ORDER BY created_at", [e.id]);
+        for (const c of convos) {
+          let msgs = [];
+          try { msgs = typeof c.messages === "string" ? JSON.parse(c.messages) : (c.messages || []); } catch {}
+          if (msgs.length) {
+            const msgHtml = msgs.map(m => `<div style="margin-bottom:8px;"><strong style="color:${m.role === "user" ? "#333" : "#666"};">${m.role === "user" ? "You" : "AI Companion"}:</strong> ${escHtml(m.content)}</div>`).join("");
+            convoBlock += `<div style="background:#fafafa;padding:16px;border-radius:8px;margin-top:16px;border:1px solid #eee;"><h4 style="margin:0 0 8px;">Conversation</h4>${msgHtml}</div>`;
+          }
+        }
+      }
+
       chaptersHtml += `
         <div style="page-break-before:always;padding-top:40px;">
           <h2 style="margin-bottom:4px;">${escHtml(e.title || "Untitled")}</h2>
           <div style="color:#888;margin-bottom:16px;font-size:0.9em;">${escHtml(e.created_at)}</div>
           ${moodBlock}
           <div>${e.content_html || `<p>${escHtml(e.content)}</p>`}</div>
+          ${convoBlock}
         </div>`;
+    }
+
+    // Memories / insights section
+    let memoriesHtml = "";
+    if (opts.include_memories) {
+      const memories = await getAll("SELECT * FROM ai_memories WHERE user_id = $1 AND is_active = TRUE ORDER BY category, updated_at DESC LIMIT 30", [opts.user_id || "default"]);
+      if (memories.length) {
+        const byCat = {};
+        for (const m of memories) { (byCat[m.category] = byCat[m.category] || []).push(m.content); }
+        const labels = { struggle: "Struggles", strength: "Strengths", pattern: "Patterns", relationship: "Relationships", trigger: "Triggers", insight: "Insights", milestone: "Milestones" };
+        let memItems = "";
+        for (const [cat, items] of Object.entries(byCat)) {
+          memItems += `<h4>${escHtml(labels[cat] || cat)}</h4><ul>`;
+          for (const item of items.slice(0, 5)) memItems += `<li>${escHtml(item)}</li>`;
+          memItems += `</ul>`;
+        }
+        memoriesHtml = `<div style="page-break-before:always;padding-top:40px;"><h2>AI Insights &amp; Reflections</h2><p style="font-style:italic;color:#666;">What your AI companion learned about your journey.</p>${memItems}</div>`;
+      }
+    }
+
+    // Statistics
+    let statsHtml = "";
+    if (opts.include_statistics) {
+      const totalEntries = filtered.length;
+      const moods = await getAll("SELECT weather FROM mood_entries WHERE user_id = $1", [opts.user_id || "default"]);
+      const moodCounts = {};
+      for (const m of moods) { moodCounts[m.weather] = (moodCounts[m.weather] || 0) + 1; }
+      const topMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0];
+      statsHtml = `<div style="page-break-before:always;padding-top:40px;"><h2>Journey at a Glance</h2>
+        <p><strong>Total Entries:</strong> ${totalEntries}</p>
+        <p><strong>Total Mood Records:</strong> ${moods.length}</p>
+        ${topMood ? `<p><strong>Most Common Weather:</strong> ${escHtml((MOOD_WEATHER[topMood[0]] || {}).label || topMood[0])} (${topMood[1]} times)</p>` : ""}
+      </div>`;
     }
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -1482,7 +1562,11 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
       h1{text-align:center;} h2{color:#333;} .cover{text-align:center;padding:100px 0;}</style>
       </head><body>
       <div class="cover"><h1>${bookTitle}</h1><p>A Recovery Journal</p><p>${bookAuthor}</p><p>${bookYear}</p></div>
+      ${dedicationHtml}
+      ${heroesHtml}
       ${chaptersHtml}
+      ${memoriesHtml}
+      ${statsHtml}
       </body></html>`;
   }
 
@@ -1492,14 +1576,33 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
     const bookAuthor = opts.author || "";
     const bookYear = opts.year || new Date().getFullYear().toString();
 
+    // Filter by date range if provided
+    let filtered = entries;
+    if (opts.start_date) filtered = filtered.filter(e => e.created_at >= opts.start_date);
+    if (opts.end_date) filtered = filtered.filter(e => e.created_at <= opts.end_date + "T23:59:59");
+
     let md = `# ${bookTitle}\n\n*A Recovery Journal*\n\n`;
     if (bookAuthor) md += `**${bookAuthor}**\n\n`;
     md += `${bookYear}\n\n`;
     if (opts.dedication) md += `> ${opts.dedication}\n\n`;
     md += `---\n\n`;
 
-    for (let i = 0; i < entries.length; i++) {
-      const e = entries[i];
+    // Heroes section
+    if (opts.include_heroes) {
+      const heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [opts.user_id || "default"]);
+      if (heroes.length) {
+        md += `## My Recovery Heroes\n\n`;
+        for (const h of heroes) {
+          md += `**${h.name}**`;
+          if (h.description) md += ` — ${h.description}`;
+          md += `\n\n`;
+        }
+        md += `---\n\n`;
+      }
+    }
+
+    for (let i = 0; i < filtered.length; i++) {
+      const e = filtered[i];
       md += `## ${e.title || "Untitled"}\n\n`;
       md += `*${e.created_at}*\n\n`;
 
@@ -1524,7 +1627,53 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
         md += `${text}\n\n`;
       }
 
+      // Conversations for this entry
+      if (opts.include_conversations) {
+        const convos = await getAll("SELECT * FROM conversations WHERE entry_id = $1 ORDER BY created_at", [e.id]);
+        for (const c of convos) {
+          let msgs = [];
+          try { msgs = typeof c.messages === "string" ? JSON.parse(c.messages) : (c.messages || []); } catch {}
+          if (msgs.length) {
+            md += `### Conversation\n\n`;
+            for (const m of msgs) {
+              md += `**${m.role === "user" ? "You" : "AI Companion"}:** ${m.content}\n\n`;
+            }
+          }
+        }
+      }
+
       md += `---\n\n`;
+    }
+
+    // Memories / insights section
+    if (opts.include_memories) {
+      const memories = await getAll("SELECT * FROM ai_memories WHERE user_id = $1 AND is_active = TRUE ORDER BY category, updated_at DESC LIMIT 30", [opts.user_id || "default"]);
+      if (memories.length) {
+        md += `## AI Insights & Reflections\n\n*What your AI companion learned about your journey.*\n\n`;
+        const byCat = {};
+        for (const m of memories) { (byCat[m.category] = byCat[m.category] || []).push(m.content); }
+        const labels = { struggle: "Struggles", strength: "Strengths", pattern: "Patterns", relationship: "Relationships", trigger: "Triggers", insight: "Insights", milestone: "Milestones" };
+        for (const [cat, items] of Object.entries(byCat)) {
+          md += `### ${labels[cat] || cat}\n\n`;
+          for (const item of items.slice(0, 5)) md += `- ${item}\n`;
+          md += `\n`;
+        }
+        md += `---\n\n`;
+      }
+    }
+
+    // Statistics
+    if (opts.include_statistics) {
+      const totalEntries = filtered.length;
+      const moods = await getAll("SELECT weather FROM mood_entries WHERE user_id = $1", [opts.user_id || "default"]);
+      const moodCounts = {};
+      for (const m of moods) { moodCounts[m.weather] = (moodCounts[m.weather] || 0) + 1; }
+      const topMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0];
+      md += `## Journey at a Glance\n\n`;
+      md += `- **Total Entries:** ${totalEntries}\n`;
+      md += `- **Total Mood Records:** ${moods.length}\n`;
+      if (topMood) md += `- **Most Common Weather:** ${(MOOD_WEATHER[topMood[0]] || {}).label || topMood[0]} (${topMood[1]} times)\n`;
+      md += `\n`;
     }
 
     return md;
