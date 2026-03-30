@@ -1725,7 +1725,7 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
 
   // ── Simple book HTML builder ──
   async function buildBookHtml(entries, opts) {
-    const escHtml = s => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const escHtml = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const bookTitle = escHtml(opts.title || "My Recovery Journal");
     const bookAuthor = escHtml(opts.author || "");
     const bookYear = escHtml(opts.year || new Date().getFullYear().toString());
