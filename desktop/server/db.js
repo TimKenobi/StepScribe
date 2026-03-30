@@ -201,6 +201,9 @@ async function createTables() {
     ["user_preferences", "about_me", "TEXT DEFAULT ''"],
     ["journal_entries", "sections_included", "TEXT"],
     ["journal_entries", "entry_date", "TEXT"],
+    ["user_heroes", "quotes", "TEXT DEFAULT '[]'"],
+    ["app_config", "app_password_hash", "TEXT DEFAULT ''"],
+    ["user_preferences", "current_step", "INTEGER DEFAULT 0"],
   ];
   for (const [table, column, colType] of migrations) {
     try {

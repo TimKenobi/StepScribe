@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import AIMemory, UserPreferences, UserHero, MoodEntry, FAITH_TRADITIONS, MOOD_WEATHER
+from app.models.models import AIMemory, UserPreferences, UserHero, MoodEntry, MOOD_WEATHER
 from app.services.ai_service import get_ai_provider
 
 # Memory categories
@@ -153,17 +153,9 @@ async def get_memory_context(user_id: str, db: AsyncSession) -> str:
         parts.append(f"ABOUT THIS PERSON (their own words): \"{prefs.about_me}\"")
 
     if prefs and prefs.faith_tradition:
-        tradition = FAITH_TRADITIONS.get(prefs.faith_tradition, {})
-        label = tradition.get("label", prefs.faith_tradition)
-        figures = tradition.get("figures", [])
-        practices = tradition.get("practices", [])
-        faith_section = f"FAITH: {label}."
+        faith_section = f"FAITH: {prefs.faith_tradition}."
         if prefs.faith_notes:
             faith_section += f" They shared: \"{prefs.faith_notes}\""
-        if figures:
-            faith_section += f" Key figures: {', '.join(figures)}."
-        if practices:
-            faith_section += f" Practices: {', '.join(practices)}."
         parts.append(faith_section)
 
     # 2. Heroes

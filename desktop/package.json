@@ -1,10 +1,10 @@
 {
   "name": "stepscribe-desktop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "StepScribe — A journaling companion for recovery",
   "author": {
     "name": "Pixel Space Technologies LLC",
-    "email": "hello@pixelspace.dev"
+    "email": "tim@pixelspacetech.com"
   },
   "homepage": "https://github.com/TimKenobi/StepScribe",
   "license": "GPL-3.0",

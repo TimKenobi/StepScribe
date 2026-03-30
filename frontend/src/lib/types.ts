@@ -36,6 +36,7 @@ export interface Hero {
   description: string;
   is_active: boolean;
   sort_order: number;
+  quotes?: Quote[];
 }
 
 export interface Quote {

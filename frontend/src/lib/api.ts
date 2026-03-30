@@ -67,6 +67,11 @@ export const heroesApi = {
     request<any>("/api/heroes/", { method: "POST", body: JSON.stringify(data) }),
   remove: (id: string) => request<any>(`/api/heroes/${id}`, { method: "DELETE" }),
   toggle: (id: string) => request<any>(`/api/heroes/${id}/toggle`, { method: "PATCH" }),
+  quotes: () => request<any[]>("/api/heroes/quotes"),
+  searchQuotes: (name: string) =>
+    request<{ quotes: any[] }>("/api/heroes/search-quotes", { method: "POST", body: JSON.stringify({ name }) }),
+  updateQuotes: (id: string, quotes: any[]) =>
+    request<any>(`/api/heroes/${id}/quotes`, { method: "PATCH", body: JSON.stringify({ quotes }) }),
 };
 
 // Export
@@ -187,6 +192,7 @@ export const conversationApi = {
     entry_id?: string;
     message: string;
     template_key?: string;
+    current_step?: number;
   }) =>
     request<{ conversation_id: string; response: string; messages: any[] }>(
       "/api/conversations/send",
@@ -198,6 +204,7 @@ export const conversationApi = {
     entry_id?: string;
     message: string;
     template_key?: string;
+    current_step?: number;
   }) =>
     fetch(`${API_BASE}/api/conversations/send/stream`, {
       method: "POST",
@@ -237,4 +244,29 @@ export const settingsApi = {
     request<any>("/api/settings/ai", { method: "PUT", body: JSON.stringify(data) }),
   testAI: () =>
     request<{ status: string; provider: string; message: string }>("/api/settings/ai/test", { method: "POST" }),
+  resetAll: (confirmation: string) =>
+    request<any>("/api/settings/reset-all", { method: "POST", body: JSON.stringify({ confirmation }) }),
+  hasPassword: () => request<{ has_password: boolean }>("/api/settings/password"),
+  setPassword: (password: string, currentPassword?: string) =>
+    request<any>("/api/settings/password", {
+      method: "POST",
+      body: JSON.stringify({ password, current_password: currentPassword }),
+    }),
+  verifyPassword: (password: string) =>
+    request<{ verified: boolean }>("/api/settings/verify-password", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+  removePassword: (password: string) =>
+    request<any>("/api/settings/password", {
+      method: "DELETE",
+      body: JSON.stringify({ password }),
+    }),
+  getCurrentStep: () =>
+    request<{ current_step: number }>("/api/settings/current-step"),
+  setCurrentStep: (step: number) =>
+    request<{ current_step: number }>("/api/settings/current-step", {
+      method: "PUT",
+      body: JSON.stringify({ step }),
+    }),
 };

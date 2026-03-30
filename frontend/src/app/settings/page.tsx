@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { settingsApi, onboardingApi, ollamaApi } from "@/lib/api";
 import {
   Check, Loader2, CheckCircle, XCircle, Trash2, RotateCcw,
-  Download, RefreshCw, Server, Sparkles, ExternalLink,
+  Download, RefreshCw, Server, Sparkles, ExternalLink, Lock, Unlock, AlertTriangle,
 } from "lucide-react";
 
 declare global {
@@ -42,6 +42,22 @@ export default function SettingsPage() {
   const [maskedKeys, setMaskedKeys] = useState<Record<string, string>>({});
   const [resetting, setResetting] = useState(false);
 
+  // Factory reset state
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
+  const [factoryResetting, setFactoryResetting] = useState(false);
+
+  // Password state
+  const [hasPassword, setHasPassword] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [removePasswordInput, setRemovePasswordInput] = useState("");
+  const [showRemovePassword, setShowRemovePassword] = useState(false);
+
   // Ollama state
   const [ollamaStatus, setOllamaStatus] = useState<"idle" | "checking" | "connected" | "not-running" | "disconnected">("idle");
   const [ollamaVersion, setOllamaVersion] = useState("");
@@ -58,7 +74,15 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadConfig();
+    loadPasswordStatus();
   }, []);
+
+  const loadPasswordStatus = async () => {
+    try {
+      const resp = await settingsApi.hasPassword();
+      setHasPassword(resp.has_password);
+    } catch {}
+  };
 
   const loadConfig = async () => {
     try {
@@ -660,23 +684,206 @@ export default function SettingsPage() {
           </p>
         </div>
 
+        {/* Security */}
+        <div className="p-4 rounded-lg border" style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}>
+          <h3 className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+            <Lock size={16} /> Security
+          </h3>
+          <p className="text-xs mb-4" style={{ color: "var(--text-secondary)" }}>
+            Protect your journal with a password. The app will require this password when opened.
+          </p>
+
+          {hasPassword ? (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle size={14} style={{ color: "var(--success, #4ade80)" }} />
+                <span className="text-xs" style={{ color: "var(--text-primary)" }}>Password protection is enabled</span>
+              </div>
+              {showRemovePassword ? (
+                <div className="space-y-2">
+                  <input
+                    type="password"
+                    value={removePasswordInput}
+                    onChange={(e) => setRemovePasswordInput(e.target.value)}
+                    placeholder="Enter current password to remove"
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await settingsApi.removePassword(removePasswordInput);
+                          setHasPassword(false);
+                          setShowRemovePassword(false);
+                          setRemovePasswordInput("");
+                        } catch (e: any) {
+                          setPasswordError(e.message || "Failed to remove password.");
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs"
+                      style={{ backgroundColor: "#f87171", color: "#fff" }}
+                    >
+                      Remove Password
+                    </button>
+                    <button onClick={() => { setShowRemovePassword(false); setRemovePasswordInput(""); }}
+                      className="px-3 py-1.5 rounded-lg text-xs" style={{ color: "var(--text-muted)" }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button onClick={() => { setShowPasswordForm(true); setShowRemovePassword(false); }}
+                    className="px-3 py-1.5 rounded-lg text-xs"
+                    style={{ backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
+                    Change Password
+                  </button>
+                  <button onClick={() => { setShowRemovePassword(true); setShowPasswordForm(false); }}
+                    className="px-3 py-1.5 rounded-lg text-xs"
+                    style={{ color: "#f87171", border: "1px solid #f8717150" }}>
+                    <Unlock size={12} className="inline mr-1" />Remove
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button onClick={() => setShowPasswordForm(true)}
+              className="px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+              style={{ backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
+              <Lock size={14} /> Set Password
+            </button>
+          )}
+
+          {showPasswordForm && (
+            <div className="mt-3 space-y-2 p-3 rounded-lg" style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border)" }}>
+              {hasPassword && (
+                <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Current password"
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  style={{ backgroundColor: "var(--bg-secondary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
+              )}
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="New password (min 4 characters)"
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ backgroundColor: "var(--bg-secondary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ backgroundColor: "var(--bg-secondary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
+              {passwordError && <p className="text-xs" style={{ color: "#f87171" }}>{passwordError}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    setPasswordError("");
+                    if (newPassword.length < 4) { setPasswordError("Password must be at least 4 characters."); return; }
+                    if (newPassword !== confirmPassword) { setPasswordError("Passwords don't match."); return; }
+                    setPasswordSaving(true);
+                    try {
+                      await settingsApi.setPassword(newPassword, hasPassword ? currentPassword : undefined);
+                      setHasPassword(true);
+                      setShowPasswordForm(false);
+                      setNewPassword(""); setConfirmPassword(""); setCurrentPassword("");
+                    } catch (e: any) {
+                      setPasswordError(e.message || "Failed to set password.");
+                    } finally { setPasswordSaving(false); }
+                  }}
+                  disabled={passwordSaving}
+                  className="px-4 py-2 rounded-lg text-sm"
+                  style={{ backgroundColor: "var(--accent)", color: "#fff", opacity: passwordSaving ? 0.7 : 1 }}
+                >
+                  {passwordSaving ? "Saving..." : "Save Password"}
+                </button>
+                <button onClick={() => { setShowPasswordForm(false); setNewPassword(""); setConfirmPassword(""); setCurrentPassword(""); setPasswordError(""); }}
+                  className="px-3 py-2 rounded-lg text-sm" style={{ color: "var(--text-muted)" }}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Danger Zone */}
         <div className="p-4 rounded-lg border border-red-500/30" style={{ backgroundColor: "var(--bg-secondary)" }}>
           <h3 className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: "#f87171" }}>
             <Trash2 size={16} /> Danger Zone
           </h3>
           <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
-            These actions cannot be undone easily. Use with caution.
+            These actions cannot be undone. Use with caution.
           </p>
+
+          {/* Reset Onboarding */}
           <button
             onClick={resetOnboarding}
             disabled={resetting}
-            className="w-full py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 border border-red-500/50 hover:bg-red-500/10"
+            className="w-full py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 border border-red-500/30 hover:bg-red-500/10 mb-3"
             style={{ color: "#f87171" }}
           >
             {resetting ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
             {resetting ? "Resetting..." : "Reset Onboarding"}
           </button>
+
+          {/* Factory Reset */}
+          {!showResetConfirm ? (
+            <button
+              onClick={() => setShowResetConfirm(true)}
+              className="w-full py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 border border-red-500/50 hover:bg-red-500/10"
+              style={{ color: "#f87171", backgroundColor: "#f8717108" }}
+            >
+              <AlertTriangle size={14} />
+              Factory Reset — Delete All Data
+            </button>
+          ) : (
+            <div className="p-3 rounded-lg border border-red-500/50" style={{ backgroundColor: "#f8717108" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle size={14} style={{ color: "#f87171" }} />
+                <span className="text-xs font-medium" style={{ color: "#f87171" }}>
+                  This will permanently delete ALL your data
+                </span>
+              </div>
+              <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+                Journal entries, moods, conversations, AI memories, heroes, attachments — everything.
+                Your AI provider settings will be preserved. Type <strong>RESET</strong> to confirm.
+              </p>
+              <input
+                type="text"
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                placeholder='Type "RESET" to confirm'
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none mb-3 font-mono"
+                style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid #f8717150" }}
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    if (resetConfirmText !== "RESET") return;
+                    setFactoryResetting(true);
+                    try {
+                      await settingsApi.resetAll("RESET");
+                      router.push("/setup");
+                    } catch {
+                      alert("Failed to reset.");
+                      setFactoryResetting(false);
+                    }
+                  }}
+                  disabled={resetConfirmText !== "RESET" || factoryResetting}
+                  className="px-4 py-2 rounded-lg text-sm"
+                  style={{
+                    backgroundColor: resetConfirmText === "RESET" ? "#f87171" : "#f8717140",
+                    color: "#fff",
+                    opacity: factoryResetting ? 0.6 : 1,
+                  }}
+                >
+                  {factoryResetting ? "Deleting..." : "Confirm Factory Reset"}
+                </button>
+                <button
+                  onClick={() => { setShowResetConfirm(false); setResetConfirmText(""); }}
+                  className="px-3 py-2 rounded-lg text-sm"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, MessageCircle, Plus, X } from "lucide-react";
-import { conversationApi } from "@/lib/api";
+import { Send, Sparkles, MessageCircle, Plus, X, ChevronDown } from "lucide-react";
+import { conversationApi, settingsApi } from "@/lib/api";
 
 interface ChatMsg {
   role: "user" | "assistant";
@@ -18,12 +18,29 @@ interface ConvoBrief {
   updated_at: string;
 }
 
+const STEPS = [
+  { num: 1, name: "Honesty", short: "Admitted we were powerless" },
+  { num: 2, name: "Hope", short: "Came to believe" },
+  { num: 3, name: "Faith", short: "Made a decision to turn over" },
+  { num: 4, name: "Courage", short: "Searching moral inventory" },
+  { num: 5, name: "Integrity", short: "Admitted the nature of our wrongs" },
+  { num: 6, name: "Willingness", short: "Entirely ready" },
+  { num: 7, name: "Humility", short: "Humbly asked" },
+  { num: 8, name: "Brotherly Love", short: "Made a list of persons harmed" },
+  { num: 9, name: "Justice", short: "Made direct amends" },
+  { num: 10, name: "Perseverance", short: "Continued personal inventory" },
+  { num: 11, name: "Spiritual Awareness", short: "Prayer and meditation" },
+  { num: 12, name: "Service", short: "Carry the message" },
+];
+
 export default function SponsorPage() {
   const [conversations, setConversations] = useState<ConvoBrief[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [showStepPicker, setShowStepPicker] = useState(false);
   const [templates, setTemplates] = useState<Record<string, any>>({});
   const [showTemplates, setShowTemplates] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -32,6 +49,7 @@ export default function SponsorPage() {
   useEffect(() => {
     loadConversations();
     conversationApi.templates().then(setTemplates).catch(() => {});
+    settingsApi.getCurrentStep().then((r) => setCurrentStep(r.current_step || 0)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -64,6 +82,12 @@ export default function SponsorPage() {
     setShowHistory(false);
   };
 
+  const selectStep = async (step: number) => {
+    setCurrentStep(step);
+    setShowStepPicker(false);
+    try { await settingsApi.setCurrentStep(step); } catch {}
+  };
+
   const sendMessage = async (text: string, templateKey?: string) => {
     if (!text.trim() && !templateKey) return;
     const userText = text.trim();
@@ -80,6 +104,7 @@ export default function SponsorPage() {
         conversation_id: conversationId || undefined,
         message: userText || templateKey || "",
         template_key: templateKey,
+        current_step: currentStep || undefined,
       });
       setConversationId(result.conversation_id);
       setMessages(result.messages || []);
@@ -150,6 +175,59 @@ export default function SponsorPage() {
             <Plus size={14} />
           </button>
         </div>
+      </div>
+
+      {/* Step selector */}
+      <div className="mb-4 relative">
+        <button
+          onClick={() => setShowStepPicker(!showStepPicker)}
+          className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-sm transition-colors"
+          style={{
+            backgroundColor: currentStep ? "var(--accent-muted, rgba(139,92,246,0.1))" : "var(--bg-secondary)",
+            color: currentStep ? "var(--accent)" : "var(--text-muted)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <span>
+            {currentStep
+              ? `Step ${currentStep}: ${STEPS[currentStep - 1].name} — ${STEPS[currentStep - 1].short}`
+              : "Select a step to work on (optional)"}
+          </span>
+          <ChevronDown size={16} className={`transition-transform ${showStepPicker ? "rotate-180" : ""}`} />
+        </button>
+        {showStepPicker && (
+          <div
+            className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto rounded-lg border shadow-lg"
+            style={{ backgroundColor: "var(--bg-primary)", borderColor: "var(--border)" }}
+          >
+            <button
+              onClick={() => selectStep(0)}
+              className="w-full text-left px-4 py-2.5 text-sm transition-colors border-b"
+              style={{
+                borderColor: "var(--border)",
+                color: "var(--text-muted)",
+                backgroundColor: currentStep === 0 ? "var(--bg-tertiary)" : "transparent",
+              }}
+            >
+              No specific step
+            </button>
+            {STEPS.map((s) => (
+              <button
+                key={s.num}
+                onClick={() => selectStep(s.num)}
+                className="w-full text-left px-4 py-2.5 text-sm transition-colors border-b last:border-b-0"
+                style={{
+                  borderColor: "var(--border)",
+                  backgroundColor: currentStep === s.num ? "var(--accent-muted, rgba(139,92,246,0.1))" : "transparent",
+                  color: currentStep === s.num ? "var(--accent)" : "var(--text-primary)",
+                }}
+              >
+                <span className="font-medium">Step {s.num}: {s.name}</span>
+                <span className="ml-2" style={{ color: "var(--text-muted)" }}>— {s.short}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Conversation history dropdown */}

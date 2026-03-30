@@ -9,7 +9,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const { getOne, getAll, run, getClient, uuid, now } = require("./db");
 const ai = require("./ai");
-const { getSystemPrompt, getSystemPromptWithHeroes, getTemplate, getAllTemplates } = require("./sponsor");
+const { getSystemPrompt, getSystemPromptWithHeroes, getTemplate, getAllTemplates, getStepContext } = require("./sponsor");
 const {
   FAITH_TRADITIONS, MOOD_WEATHER, DEFAULT_HEROES, MEMORY_CATEGORIES,
   RECOMMENDED_MODELS, STEP_COMPANION_MODELFILE,
@@ -214,6 +214,64 @@ function createApp({ dataDir, uploadDir, exportDir, frontendDir }) {
     const newVal = !hero.is_active;
     await run("UPDATE user_heroes SET is_active = $1 WHERE id = $2", [newVal, req.params.id]);
     res.json({ id: hero.id, is_active: newVal });
+  }));
+
+  // Hero quotes — return all quotes from active heroes
+  app.get("/api/heroes/quotes", asyncHandler(async (req, res) => {
+    const { user_id = "default" } = req.query;
+    const heroes = await getAll("SELECT * FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [user_id]);
+    const quotes = [];
+    for (const hero of heroes) {
+      let heroQuotes = [];
+      try { heroQuotes = typeof hero.quotes === "string" ? JSON.parse(hero.quotes) : (hero.quotes || []); } catch {}
+      for (const q of heroQuotes) {
+        if (q && q.text) {
+          quotes.push({ author: hero.name, text: q.text, source: q.source || "" });
+        }
+      }
+    }
+    res.json(quotes);
+  }));
+
+  // Search quotes for a hero via AI
+  app.post("/api/heroes/search-quotes", asyncHandler(async (req, res) => {
+    const { name } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ detail: "Hero name is required" });
+    const prompt = `Find 5 real, famous, verified quotes by "${name.trim()}".
+Only include quotes that are genuinely attributed to this person.
+If this person is not a public figure or you cannot find verified quotes, return an empty array.
+Do NOT make up quotes. Do NOT attribute quotes to the wrong person.
+
+Return ONLY a JSON array of objects with "text" and "source" fields. Example:
+[{"text": "The quote text here.", "source": "Book or Speech name"}]
+
+If no verified quotes exist, return: []`;
+    try {
+      const response = await ai.chat([{ role: "user", content: prompt }], 0.2);
+      let cleaned = response.trim();
+      if (cleaned.startsWith("```")) cleaned = cleaned.split("\n").slice(1).join("\n").replace(/```/g, "");
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed)) return res.json({ quotes: [] });
+      const safeQuotes = parsed.slice(0, 10).filter(q => q && q.text).map(q => ({
+        text: String(q.text).slice(0, 500),
+        source: String(q.source || "").slice(0, 200),
+      }));
+      res.json({ quotes: safeQuotes });
+    } catch {
+      res.json({ quotes: [] });
+    }
+  }));
+
+  // Save quotes on a hero
+  app.patch("/api/heroes/:id/quotes", asyncHandler(async (req, res) => {
+    const hero = await getOne("SELECT * FROM user_heroes WHERE id = $1", [req.params.id]);
+    if (!hero) return res.status(404).json({ detail: "Hero not found" });
+    const quotes = (req.body.quotes || []).slice(0, 20).filter(q => q && q.text).map(q => ({
+      text: String(q.text).slice(0, 500),
+      source: String(q.source || "").slice(0, 200),
+    }));
+    await run("UPDATE user_heroes SET quotes = $1 WHERE id = $2", [JSON.stringify(quotes), req.params.id]);
+    res.json({ id: hero.id, quotes });
   }));
 
   // ══════════════════════════════════════
@@ -517,7 +575,7 @@ Rules:
   }));
 
   app.post("/api/conversations/send", asyncHandler(async (req, res) => {
-    const { user_id = "default", conversation_id, entry_id, message, template_key } = req.body;
+    const { user_id = "default", conversation_id, entry_id, message, template_key, current_step } = req.body;
     try {
       let convo = conversation_id ? await getOne("SELECT * FROM conversations WHERE id = $1", [conversation_id]) : null;
       if (!convo) {
@@ -530,6 +588,7 @@ Rules:
       const memCtx = await getMemoryContext(user_id);
       let system = getSystemPrompt();
       if (memCtx) system += "\n\n" + memCtx;
+      if (current_step) system += getStepContext(current_step);
       const eid = entry_id || convo.entry_id;
       if (eid) {
         const entry = await getOne("SELECT * FROM journal_entries WHERE id = $1", [eid]);
@@ -566,7 +625,7 @@ Rules:
   }));
 
   app.post("/api/conversations/send/stream", asyncHandler(async (req, res) => {
-    const { user_id = "default", conversation_id, entry_id, message, template_key } = req.body;
+    const { user_id = "default", conversation_id, entry_id, message, template_key, current_step } = req.body;
     try {
       let convo = conversation_id ? await getOne("SELECT * FROM conversations WHERE id = $1", [conversation_id]) : null;
       if (!convo) {
@@ -583,6 +642,7 @@ Rules:
       const memCtx = await getMemoryContext(user_id);
       let system = getSystemPrompt();
       if (memCtx) system += "\n\n" + memCtx;
+      if (current_step) system += getStepContext(current_step);
       const eid = entry_id || convo.entry_id;
       if (eid) {
         const entry = await getOne("SELECT * FROM journal_entries WHERE id = $1", [eid]);
@@ -915,6 +975,117 @@ Rules:
   });
 
   // ══════════════════════════════════════
+  // Factory Reset — clears all user data, preserves AI config
+  // ══════════════════════════════════════
+  app.post("/api/settings/reset-all", asyncHandler(async (req, res) => {
+    const { confirmation } = req.body;
+    if (confirmation !== "RESET") {
+      return res.status(400).json({ detail: "Type RESET to confirm factory reset." });
+    }
+    const tables = [
+      "conversations", "ai_memories", "mood_entries", "shared_entries",
+      "attachments", "group_members", "group_journals", "user_heroes",
+    ];
+    for (const table of tables) {
+      await run(`DELETE FROM ${table}`);
+    }
+    // Delete journal entries (conversations reference them via entry_id already deleted)
+    await run("DELETE FROM journal_entries");
+    // Reset preferences but keep the row
+    await run("UPDATE user_preferences SET faith_tradition = '', faith_notes = '', about_me = '', onboarding_complete = FALSE");
+    // Clear password but keep AI config
+    await run("UPDATE app_config SET app_password_hash = '' WHERE id = 'default'");
+    // Clean up upload files
+    try {
+      const files = fs.readdirSync(uploadDir);
+      for (const file of files) {
+        fs.unlinkSync(path.join(uploadDir, file));
+      }
+    } catch {}
+    res.json({ status: "ok", message: "All data has been reset." });
+  }));
+
+  // ══════════════════════════════════════
+  // Password Protection
+  // ══════════════════════════════════════
+  app.get("/api/settings/password", asyncHandler(async (req, res) => {
+    const config = await getOne("SELECT app_password_hash FROM app_config WHERE id = 'default'");
+    res.json({ has_password: !!(config && config.app_password_hash) });
+  }));
+
+  app.post("/api/settings/password", asyncHandler(async (req, res) => {
+    const { password, current_password } = req.body;
+    if (!password || password.length < 4) {
+      return res.status(400).json({ detail: "Password must be at least 4 characters." });
+    }
+    // If there's an existing password, verify it first
+    const config = await getOne("SELECT app_password_hash FROM app_config WHERE id = 'default'");
+    if (config && config.app_password_hash) {
+      if (!current_password) return res.status(400).json({ detail: "Current password required." });
+      const [salt, hash] = config.app_password_hash.split(":");
+      const check = crypto.pbkdf2Sync(current_password, salt, 100000, 64, "sha512").toString("hex");
+      if (check !== hash) return res.status(403).json({ detail: "Current password is incorrect." });
+    }
+    const salt = crypto.randomBytes(16).toString("hex");
+    const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
+    let existing = await getOne("SELECT * FROM app_config WHERE id = 'default'");
+    if (!existing) {
+      await run("INSERT INTO app_config (id, app_password_hash) VALUES ('default', $1)", [`${salt}:${hash}`]);
+    } else {
+      await run("UPDATE app_config SET app_password_hash = $1 WHERE id = 'default'", [`${salt}:${hash}`]);
+    }
+    res.json({ status: "ok", has_password: true });
+  }));
+
+  app.post("/api/settings/verify-password", asyncHandler(async (req, res) => {
+    const { password } = req.body;
+    const config = await getOne("SELECT app_password_hash FROM app_config WHERE id = 'default'");
+    if (!config || !config.app_password_hash) {
+      return res.json({ verified: true }); // No password set
+    }
+    if (!password) return res.json({ verified: false });
+    const [salt, hash] = config.app_password_hash.split(":");
+    const check = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
+    res.json({ verified: check === hash });
+  }));
+
+  app.delete("/api/settings/password", asyncHandler(async (req, res) => {
+    const { password } = req.body;
+    const config = await getOne("SELECT app_password_hash FROM app_config WHERE id = 'default'");
+    if (!config || !config.app_password_hash) {
+      return res.json({ status: "ok", has_password: false });
+    }
+    if (!password) return res.status(400).json({ detail: "Password required to remove protection." });
+    const [salt, hash] = config.app_password_hash.split(":");
+    const check = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
+    if (check !== hash) return res.status(403).json({ detail: "Incorrect password." });
+    await run("UPDATE app_config SET app_password_hash = '' WHERE id = 'default'");
+    res.json({ status: "ok", has_password: false });
+  }));
+
+  // ── Step tracking ──
+  app.get("/api/settings/current-step", asyncHandler(async (req, res) => {
+    const userId = req.query.user_id || "default";
+    const prefs = await getOne("SELECT current_step FROM user_preferences WHERE user_id = $1", [userId]);
+    res.json({ current_step: prefs?.current_step || 0 });
+  }));
+
+  app.put("/api/settings/current-step", asyncHandler(async (req, res) => {
+    const userId = req.body.user_id || "default";
+    const step = req.body.step;
+    if (typeof step !== "number" || step < 0 || step > 12) {
+      return res.status(400).json({ detail: "Step must be 0-12." });
+    }
+    const existing = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [userId]);
+    if (existing) {
+      await run("UPDATE user_preferences SET current_step = $1, updated_at = $2 WHERE user_id = $3", [step, now(), userId]);
+    } else {
+      await run("INSERT INTO user_preferences (id, user_id, current_step) VALUES ($1, $2, $3)", [uuid(), userId, step]);
+    }
+    res.json({ current_step: step });
+  }));
+
+  // ══════════════════════════════════════
   // Ollama Management
   // ══════════════════════════════════════
   app.get("/api/ollama/status", async (req, res) => {
@@ -1241,11 +1412,8 @@ Example: {"insights": [{"category": "struggle", "content": "He struggles with al
     const prefs = await getOne("SELECT * FROM user_preferences WHERE user_id = $1", [userId]);
     if (prefs?.about_me) parts.push(`ABOUT THIS PERSON (their own words): "${prefs.about_me}"`);
     if (prefs?.faith_tradition) {
-      const t = FAITH_TRADITIONS[prefs.faith_tradition] || {};
-      let s = `FAITH: ${t.label || prefs.faith_tradition}.`;
+      let s = `FAITH: ${prefs.faith_tradition}.`;
       if (prefs.faith_notes) s += ` They shared: "${prefs.faith_notes}"`;
-      if (t.figures?.length) s += ` Key figures: ${t.figures.join(", ")}.`;
-      if (t.practices?.length) s += ` Practices: ${t.practices.join(", ")}.`;
       parts.push(s);
     }
     const heroes = await getAll("SELECT name FROM user_heroes WHERE user_id = $1 AND is_active = TRUE ORDER BY sort_order", [userId]);

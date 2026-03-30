@@ -4,11 +4,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.models import UserPreferences, UserHero, AIMemory, FAITH_TRADITIONS
+from app.models.models import UserPreferences, UserHero, AIMemory
 
 router = APIRouter()
-
-from app.routers.heroes import DEFAULT_HEROES
 
 
 class OnboardingData(BaseModel):
@@ -45,11 +43,11 @@ async def get_status(user_id: str = "default", db: AsyncSession = Depends(get_db
             hero_count=hero_count,
         )
 
-    tradition = FAITH_TRADITIONS.get(prefs.faith_tradition, {})
+    tradition = prefs.faith_tradition or ""
     return OnboardingStatus(
         onboarding_complete=prefs.onboarding_complete,
-        faith_tradition=prefs.faith_tradition,
-        faith_label=tradition.get("label", ""),
+        faith_tradition=tradition,
+        faith_label=tradition,
         hero_count=hero_count,
     )
 
@@ -147,10 +145,8 @@ async def complete_onboarding(data: OnboardingData, db: AsyncSession = Depends(g
 
     await db.commit()
 
-    # Return suggested figures from tradition
-    tradition = FAITH_TRADITIONS.get(data.faith_tradition, {})
     return {
         "onboarding_complete": True,
-        "suggested_figures": tradition.get("figures", []),
-        "suggested_practices": tradition.get("practices", []),
+        "suggested_figures": [],
+        "suggested_practices": [],
     }
