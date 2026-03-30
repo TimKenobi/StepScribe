@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import {
   Plus, Save, Trash2, BookOpen, MessageCircle, X,
   ChevronDown, ChevronUp, Send, Sparkles, Eye, EyeOff, Paperclip, Image,
-  ClipboardCopy,
+  ClipboardCopy, Share2, Users, Check, Loader2,
 } from "lucide-react";
 import Editor, { EditorHandle } from "@/components/Editor";
 import MoodWeather from "@/components/MoodWeather";
 import VoiceInput from "@/components/VoiceInput";
 import HeroQuotes from "@/components/HeroQuotes";
-import { journalApi, moodApi, conversationApi, uploadsApi, onboardingApi } from "@/lib/api";
+import { journalApi, moodApi, conversationApi, uploadsApi, onboardingApi, groupsApi } from "@/lib/api";
 import { saveOfflineEntry } from "@/lib/storage";
 import { isOnline as checkOnline } from "@/lib/storage";
 
@@ -76,6 +76,12 @@ export default function JournalPage() {
   // Attachments
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [uploading, setUploading] = useState(false);
+
+  // Share to group
+  const [showSharePicker, setShowSharePicker] = useState(false);
+  const [shareGroups, setShareGroups] = useState<{ id: string; name: string }[]>([]);
+  const [sharing, setSharing] = useState(false);
+  const [shareSuccess, setShareSuccess] = useState<string | null>(null);
 
   // Auto-scroll chat to bottom when messages change
   useEffect(() => {
@@ -268,6 +274,28 @@ export default function JournalPage() {
 
   const toggleSection = (key: string) => setSections((prev) => ({ ...prev, [key]: !prev[key] }));
 
+  const openSharePicker = async () => {
+    if (!activeEntry) return;
+    try {
+      const groups = await groupsApi.list();
+      setShareGroups(groups);
+      setShowSharePicker(true);
+      setShareSuccess(null);
+    } catch { setShareGroups([]); setShowSharePicker(true); }
+  };
+
+  const shareToGroup = async (groupId: string, groupName: string) => {
+    if (!activeEntry) return;
+    setSharing(true);
+    try {
+      const plainContent = html.replace(/<[^>]+>/g, "");
+      await groupsApi.share({ entry_id: activeEntry.id, group_id: groupId, shared_by: "default", title: title || "Untitled", content: plainContent });
+      setShareSuccess(groupName);
+      setTimeout(() => { setShareSuccess(null); setShowSharePicker(false); }, 1500);
+    } catch {}
+    setSharing(false);
+  };
+
   const wordCount = html.replace(/<[^>]+>/g, "").split(/\s+/).filter(Boolean).length;
 
   return (
@@ -383,6 +411,47 @@ export default function JournalPage() {
                 <button onClick={() => setShowChat(!showChat)} className="p-2 rounded-lg transition-colors"
                   style={{ backgroundColor: showChat ? "var(--accent-muted)" : "var(--bg-tertiary)", color: showChat ? "var(--accent)" : "var(--text-secondary)" }}
                   title="Talk to AI Sponsor"><MessageCircle size={16} /></button>
+                {activeEntry && (
+                  <div className="relative">
+                    <button onClick={openSharePicker} className="p-2 rounded-lg transition-colors"
+                      style={{ backgroundColor: showSharePicker ? "var(--accent-muted)" : "var(--bg-tertiary)", color: showSharePicker ? "var(--accent)" : "var(--text-secondary)" }}
+                      title="Share to group">
+                      <Share2 size={16} />
+                    </button>
+                    {showSharePicker && (
+                      <div className="absolute bottom-full right-0 mb-2 w-64 rounded-lg shadow-lg border z-50"
+                        style={{ backgroundColor: "var(--bg-secondary)", borderColor: "var(--border)" }}>
+                        <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: "var(--border)" }}>
+                          <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>Share to Group</span>
+                          <button onClick={() => setShowSharePicker(false)}><X size={14} style={{ color: "var(--text-muted)" }} /></button>
+                        </div>
+                        {shareSuccess ? (
+                          <div className="p-4 text-center">
+                            <Check size={20} className="mx-auto mb-1" style={{ color: "var(--success, #22c55e)" }} />
+                            <p className="text-xs" style={{ color: "var(--text-secondary)" }}>Shared to {shareSuccess}!</p>
+                          </div>
+                        ) : shareGroups.length > 0 ? (
+                          <div className="max-h-48 overflow-y-auto">
+                            {shareGroups.map((g) => (
+                              <button key={g.id} onClick={() => shareToGroup(g.id, g.name)} disabled={sharing}
+                                className="w-full text-left px-3 py-2.5 flex items-center gap-2 transition-colors hover:brightness-95 border-b last:border-b-0"
+                                style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>
+                                <Users size={14} style={{ color: "var(--accent)" }} />
+                                <span className="text-sm">{g.name}</span>
+                                {sharing && <Loader2 size={12} className="ml-auto animate-spin" style={{ color: "var(--text-muted)" }} />}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-4 text-center">
+                            <Users size={20} className="mx-auto mb-1" style={{ color: "var(--text-muted)" }} />
+                            <p className="text-xs" style={{ color: "var(--text-muted)" }}>No groups yet. Create or join one on the Groups page.</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {activeEntry && <button onClick={deleteEntry} className="p-2 rounded" title="Delete entry"><Trash2 size={16} style={{ color: "var(--danger)" }} /></button>}
                 <button onClick={() => saveEntry(false)} disabled={saving} className="px-4 py-2 rounded-lg text-sm inline-flex items-center gap-1.5"
                   style={{ backgroundColor: "var(--bg-tertiary)", color: "var(--text-secondary)" }}>
