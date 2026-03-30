@@ -1062,8 +1062,19 @@ Rules:
   }));
 
   app.post("/api/settings/supabase/test", asyncHandler(async (req, res) => {
-    const { supabase_url, supabase_anon_key } = req.body;
+    let { supabase_url, supabase_anon_key } = req.body;
     const url = (supabase_url || "").replace(/\/$/, "");
+
+    // If key is masked (from the GET endpoint), use the stored key from DB
+    if (supabase_anon_key && supabase_anon_key.includes("••")) {
+      const saved = await getOne("SELECT supabase_anon_key FROM app_config WHERE id = 'default'", []);
+      if (saved?.supabase_anon_key) {
+        supabase_anon_key = saved.supabase_anon_key;
+      } else {
+        return res.json({ ok: false, error: "No saved API key found. Please re-enter your Supabase anon key." });
+      }
+    }
+
     if (!url || !supabase_anon_key) return res.json({ ok: false, error: "URL and key are required" });
     try {
       const r = await fetch(`${url}/rest/v1/groups?limit=1`, {
@@ -1076,7 +1087,13 @@ Rules:
       }
       return res.json({ ok: false, error: `HTTP ${r.status}: ${text.slice(0, 200)}` });
     } catch (e) {
-      return res.json({ ok: false, error: e.message });
+      if (e.cause?.code === "ENOTFOUND" || e.message?.includes("ENOTFOUND")) {
+        return res.json({ ok: false, error: "Could not reach Supabase. The project may be paused or the URL is incorrect." });
+      }
+      if (e.cause?.code === "ECONNREFUSED" || e.message?.includes("ECONNREFUSED")) {
+        return res.json({ ok: false, error: "Connection refused. The Supabase project may be paused — check your Supabase dashboard." });
+      }
+      return res.json({ ok: false, error: e.message || "Unknown connection error" });
     }
   }));
 
