@@ -849,16 +849,32 @@ Rules:
     // Sync to Supabase if configured
     await supabaseSync("groups", "POST", { id, name, description, created_by, invite_code: inviteCode, created_at: now() });
     await supabaseSync("group_members", "POST", { id: uuid(), group_id: id, user_id: created_by, display_name: await getSupabaseDisplayName(), role: "sponsor", joined_at: now() });
+    group.share_code = await makeShareCode(inviteCode);
     res.json(group);
   }));
 
   app.post("/api/groups/join", asyncHandler(async (req, res) => {
-    const { user_id, invite_code, role = "member" } = req.body;
-    // Try Supabase first if configured, then local
-    let group = await getOne("SELECT * FROM group_journals WHERE invite_code = $1", [invite_code]);
+    const { user_id, invite_code: rawCode, role = "member" } = req.body;
+
+    // Try to decode as composite share code (contains Supabase URL + key + invite code)
+    let actualCode = rawCode;
+    const composite = parseShareCode(rawCode);
+    if (composite) {
+      actualCode = composite.c;
+      // Auto-configure Supabase if not already set up
+      const existingConfig = await getSupabaseConfig();
+      if (!existingConfig) {
+        await run(
+          `UPDATE app_config SET supabase_url = $1, supabase_anon_key = $2 WHERE id = 'default'`,
+          [composite.u, composite.k]);
+      }
+    }
+
+    // Try local first
+    let group = await getOne("SELECT * FROM group_journals WHERE invite_code = $1", [actualCode]);
     if (!group) {
       // Try pulling from Supabase
-      const remoteGroup = await supabaseFetch("groups", `?invite_code=eq.${encodeURIComponent(invite_code)}&limit=1`);
+      const remoteGroup = await supabaseFetch("groups", `?invite_code=eq.${encodeURIComponent(actualCode)}&limit=1`);
       if (remoteGroup && remoteGroup.length > 0) {
         const rg = remoteGroup[0];
         await run("INSERT INTO group_journals (id, name, description, created_by, invite_code, created_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING",
@@ -893,6 +909,9 @@ Rules:
   app.get("/api/groups/:userId", asyncHandler(async (req, res) => {
     const groups = await getAll("SELECT g.* FROM group_journals g JOIN group_members m ON m.group_id = g.id WHERE m.user_id = $1",
       [req.params.userId]);
+    for (const g of groups) {
+      g.share_code = await makeShareCode(g.invite_code);
+    }
     res.json(groups);
   }));
 
@@ -946,6 +965,24 @@ Rules:
   // ══════════════════════════════════════
   // Supabase Cloud Sync Helper
   // ══════════════════════════════════════
+
+  // Composite share codes embed Supabase URL+key+invite_code so joining users auto-configure
+  async function makeShareCode(inviteCode) {
+    const config = await getSupabaseConfig();
+    if (!config) return inviteCode; // No Supabase = plain code
+    const payload = JSON.stringify({ u: config.url, k: config.key, c: inviteCode });
+    return Buffer.from(payload).toString("base64url");
+  }
+
+  function parseShareCode(code) {
+    try {
+      const json = Buffer.from(code, "base64url").toString("utf8");
+      const parsed = JSON.parse(json);
+      if (parsed.u && parsed.k && parsed.c) return parsed;
+    } catch {}
+    return null; // Not a composite code
+  }
+
   async function getSupabaseConfig() {
     const config = await getOne("SELECT supabase_url, supabase_anon_key, supabase_display_name FROM app_config WHERE id = 'default'", []);
     if (!config?.supabase_url || !config?.supabase_anon_key) return null;
@@ -1074,18 +1111,20 @@ Rules:
   }));
 
   app.post("/api/sync/import", asyncHandler(async (req, res) => {
-    const { user_id = "default", entries = [] } = req.body;
-    let imported = 0, updated = 0;
+    const { user_id = "default", entries = [], moods = [], conversations = [], memories = [], heroes = [], attachments = [], preferences } = req.body;
+    const counts = { entries_imported: 0, entries_updated: 0, moods: 0, conversations: 0, memories: 0, heroes: 0, attachments: 0 };
     const client = await getClient();
     try {
       await client.query("BEGIN");
+
+      // --- Journal entries + inline mood data ---
       for (const se of entries) {
         if (se.id) {
           const { rows } = await client.query("SELECT * FROM journal_entries WHERE id = $1", [se.id]);
           if (rows[0]) {
             await client.query("UPDATE journal_entries SET title = $1, content = $2, content_html = $3, prompt_used = $4, is_draft = $5, updated_at = $6 WHERE id = $7",
               [se.title, se.content, se.content_html, se.prompt_used, !!se.is_draft, now(), se.id]);
-            updated++;
+            counts.entries_updated++;
             continue;
           }
         }
@@ -1093,11 +1132,65 @@ Rules:
         await client.query("INSERT INTO journal_entries (id, user_id, title, content, content_html, prompt_used, is_draft, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
           [entryId, user_id, se.title, se.content, se.content_html, se.prompt_used, !!se.is_draft, se.created_at || now(), now()]);
         if (se.mood_weather) {
-          await client.query("INSERT INTO mood_entries (id, user_id, entry_id, weather, note, energy_level, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+          await client.query("INSERT INTO mood_entries (id, user_id, entry_id, weather, note, energy_level, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING",
             [uuid(), user_id, entryId, se.mood_weather, se.mood_note || "", se.mood_energy || 5, now()]);
         }
-        imported++;
+        counts.entries_imported++;
       }
+
+      // --- Standalone mood entries ---
+      for (const m of moods) {
+        if (!m.id) continue;
+        await client.query(
+          "INSERT INTO mood_entries (id, user_id, entry_id, weather, note, energy_level, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO UPDATE SET weather = $4, note = $5, energy_level = $6",
+          [m.id, user_id, m.entry_id || null, m.weather, m.note || "", m.energy_level ?? 5, m.created_at || now()]);
+        counts.moods++;
+      }
+
+      // --- Conversations ---
+      for (const c of conversations) {
+        if (!c.id) continue;
+        const msgs = typeof c.messages === "string" ? c.messages : JSON.stringify(c.messages || []);
+        await client.query(
+          "INSERT INTO conversations (id, user_id, entry_id, messages, is_active, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO UPDATE SET messages = $4, is_active = $5, updated_at = $7",
+          [c.id, user_id, c.entry_id || null, msgs, c.is_active !== false, c.created_at || now(), now()]);
+        counts.conversations++;
+      }
+
+      // --- AI memories ---
+      for (const m of memories) {
+        if (!m.id) continue;
+        await client.query(
+          "INSERT INTO ai_memories (id, user_id, category, content, source, source_id, is_active, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO UPDATE SET category = $3, content = $4, is_active = $7, updated_at = $9",
+          [m.id, user_id, m.category, m.content, m.source || "conversation", m.source_id || null, m.is_active !== false, m.created_at || now(), now()]);
+        counts.memories++;
+      }
+
+      // --- Heroes ---
+      for (const h of heroes) {
+        if (!h.id) continue;
+        await client.query(
+          "INSERT INTO user_heroes (id, user_id, name, description, is_active, sort_order) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET name = $3, description = $4, is_active = $5, sort_order = $6",
+          [h.id, user_id, h.name, h.description || "", h.is_active !== false, h.sort_order ?? 0]);
+        counts.heroes++;
+      }
+
+      // --- Attachments (metadata only — files must exist) ---
+      for (const a of attachments) {
+        if (!a.id) continue;
+        await client.query(
+          "INSERT INTO attachments (id, user_id, entry_id, filename, original_name, content_type, size_bytes, caption, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO NOTHING",
+          [a.id, user_id, a.entry_id || null, a.filename, a.original_name, a.content_type, a.size_bytes || 0, a.caption || "", a.created_at || now()]);
+        counts.attachments++;
+      }
+
+      // --- User preferences ---
+      if (preferences) {
+        await client.query(
+          `UPDATE user_preferences SET faith_tradition = COALESCE($1, faith_tradition), faith_notes = COALESCE($2, faith_notes), about_me = COALESCE($3, about_me), onboarding_complete = $4, updated_at = $5 WHERE user_id = $6`,
+          [preferences.faith_tradition || "", preferences.faith_notes || "", preferences.about_me || "", !!preferences.onboarding_complete, now(), user_id]);
+      }
+
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");
@@ -1105,7 +1198,7 @@ Rules:
     } finally {
       client.release();
     }
-    res.json({ imported, updated });
+    res.json({ imported: counts.entries_imported, updated: counts.entries_updated, ...counts });
   }));
 
   // ══════════════════════════════════════

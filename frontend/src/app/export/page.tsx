@@ -108,9 +108,16 @@ export default function ExportPage() {
     setImporting(true);
     try {
       const data = await importJsonFile() as any;
-      if (data.entries) {
-        await syncApi.import(data);
-        setMessage(`Imported ${data.entries.length} entries.`);
+      if (data.entries || data.heroes || data.memories || data.conversations) {
+        const result = await syncApi.import(data);
+        const parts = [];
+        if (result.entries_imported || result.entries_updated) parts.push(`${(result.entries_imported || 0) + (result.entries_updated || 0)} entries`);
+        if (result.heroes) parts.push(`${result.heroes} heroes`);
+        if (result.memories) parts.push(`${result.memories} memories`);
+        if (result.conversations) parts.push(`${result.conversations} conversations`);
+        if (result.moods) parts.push(`${result.moods} moods`);
+        if (result.attachments) parts.push(`${result.attachments} attachments`);
+        setMessage(parts.length ? `Imported ${parts.join(", ")}.` : "Import complete (no new data).");
       } else {
         setMessage("Invalid backup file format.");
       }

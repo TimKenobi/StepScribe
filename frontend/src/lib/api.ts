@@ -134,7 +134,7 @@ export const supabaseApi = {
 // Sync
 export const syncApi = {
   export: (userId = "default") => request<any>(`/api/sync/export?user_id=${userId}`),
-  import: (data: { user_id?: string; entries: any[] }) =>
+  import: (data: { user_id?: string; entries?: any[]; moods?: any[]; conversations?: any[]; memories?: any[]; heroes?: any[]; attachments?: any[]; preferences?: any }) =>
     request<any>("/api/sync/import", { method: "POST", body: JSON.stringify(data) }),
 };
 

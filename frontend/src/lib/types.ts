@@ -56,6 +56,7 @@ export interface Group {
   name: string;
   description: string;
   invite_code: string;
+  share_code?: string;
   created_by: string;
   created_at: string;
 }

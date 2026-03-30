@@ -425,12 +425,12 @@ export default function GroupsPage() {
                   {expandedGroup === group.id ? <ChevronUp size={14} style={{ color: "var(--text-muted)" }} /> : <ChevronDown size={14} style={{ color: "var(--text-muted)" }} />}
                 </button>
                 <button
-                  onClick={() => copyInvite(group.invite_code)}
+                  onClick={() => copyInvite(group.share_code || group.invite_code)}
                   className="flex items-center gap-1 px-3 py-1.5 rounded text-xs shrink-0"
                   style={{ backgroundColor: "var(--bg-tertiary)", color: "var(--text-secondary)" }}
                 >
                   <Copy size={12} />
-                  {copied === group.invite_code ? "Copied!" : "Invite Code"}
+                  {copied === (group.share_code || group.invite_code) ? "Copied!" : "Invite Code"}
                 </button>
               </div>
               {group.description && (
