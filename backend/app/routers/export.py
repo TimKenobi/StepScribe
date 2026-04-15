@@ -39,7 +39,7 @@ class BookRequest(BaseModel):
 def _embed_images_in_html(content_html: str, upload_dir: str) -> str:
     """Replace /api/uploads/file/X refs with base64 data URIs for PDF embedding."""
     def _replace_src(match):
-        filename = match.group(1)
+        filename = os.path.basename(match.group(1))
         filepath = os.path.join(upload_dir, filename)
         if os.path.isfile(filepath):
             ext = os.path.splitext(filename)[1].lower()

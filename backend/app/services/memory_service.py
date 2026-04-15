@@ -12,6 +12,7 @@ from datetime import datetime
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.models import AIMemory, UserPreferences, UserHero, MoodEntry, MOOD_WEATHER
 from app.services.ai_service import get_ai_provider
 

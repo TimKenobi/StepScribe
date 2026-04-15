@@ -1,6 +1,6 @@
 """Conversation router — persistent chat tied to journal entries."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -120,7 +120,7 @@ async def send_message(data: MessageIn, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=502, detail=f"AI provider error: {str(e)}")
 
     # Update conversation with both messages
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     new_messages = list(convo.messages)
 
     if data.template_key and len(convo.messages) == 0:
@@ -132,7 +132,7 @@ async def send_message(data: MessageIn, db: AsyncSession = Depends(get_db)):
     new_messages.append({"role": "assistant", "content": response, "timestamp": now})
 
     convo.messages = new_messages
-    convo.updated_at = datetime.utcnow()
+    convo.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(convo)
 
@@ -219,7 +219,7 @@ async def send_message_stream(data: MessageIn, db: AsyncSession = Depends(get_db
             async with async_session() as save_db:
                 c = await save_db.get(Conversation, convo_id)
                 if c:
-                    now = datetime.utcnow().isoformat()
+                    now = datetime.now(timezone.utc).isoformat()
                     new_msgs = list(c.messages)
                     if data.template_key and len(existing_msgs) == 0:
                         tmpl = get_template(data.template_key)
@@ -228,7 +228,7 @@ async def send_message_stream(data: MessageIn, db: AsyncSession = Depends(get_db
                     new_msgs.append({"role": "user", "content": data.message, "timestamp": now})
                     new_msgs.append({"role": "assistant", "content": full_response, "timestamp": now})
                     c.messages = new_msgs
-                    c.updated_at = datetime.utcnow()
+                    c.updated_at = datetime.now(timezone.utc)
                     await save_db.commit()
 
                     # Extract memories + auto-compact
@@ -252,7 +252,7 @@ async def end_conversation(conversation_id: str, db: AsyncSession = Depends(get_
     if not convo:
         raise HTTPException(status_code=404, detail="Conversation not found")
     convo.is_active = False
-    convo.updated_at = datetime.utcnow()
+    convo.updated_at = datetime.now(timezone.utc)
     await db.commit()
     return {"id": convo.id, "ended": True}
 
