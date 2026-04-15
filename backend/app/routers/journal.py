@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -105,7 +105,7 @@ async def update_entry(entry_id: str, data: EntryUpdate, db: AsyncSession = Depe
             del update_data["entry_date"]
     for key, value in update_data.items():
         setattr(entry, key, value)
-    entry.updated_at = datetime.utcnow()
+    entry.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(entry)
 

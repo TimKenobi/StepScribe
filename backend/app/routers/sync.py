@@ -4,7 +4,7 @@ Complete backup of all user data: entries, moods, conversations,
 memories, heroes, preferences, and attachment metadata.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -219,7 +219,7 @@ async def export_data(user_id: str = "default", db: AsyncSession = Depends(get_d
         heroes=sync_heroes,
         attachments=sync_attachments,
         preferences=sync_prefs,
-        exported_at=datetime.utcnow().isoformat(),
+        exported_at=datetime.now(timezone.utc).isoformat(),
     )
 
 
@@ -238,7 +238,7 @@ async def import_data(req: ImportRequest, db: AsyncSession = Depends(get_db)):
                 existing.content_html = se.content_html
                 existing.prompt_used = se.prompt_used
                 existing.is_draft = se.is_draft
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = datetime.now(timezone.utc)
                 updated_count += 1
                 continue
 
